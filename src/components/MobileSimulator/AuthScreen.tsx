@@ -139,7 +139,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={{ duration: 0.25 }}
-      className={`h-full w-full min-h-[100dvh] flex flex-col justify-between p-4 sm:p-6 select-none overflow-y-auto custom-scrollbar transition-colors duration-300 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] ${
+      className={`h-full w-full min-h-full flex-1 flex flex-col justify-between p-4 sm:p-6 select-none overflow-y-auto custom-scrollbar transition-colors duration-300 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] ${
         isDark ? 'bg-[#050507] text-white' : 'bg-[#F8FAFC] text-[#0F172A]'
       }`}
     >

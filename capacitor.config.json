@@ -12,8 +12,9 @@
   "ios": {
     "backgroundColor": "#000000",
     "allowsLinkPreview": false,
-    "scrollEnabled": true,
-    "contentInset": "always"
+    "scrollEnabled": false,
+    "contentInset": "never",
+    "preferredContentMode": "mobile"
   },
   "server": {
     "cleartext": true,

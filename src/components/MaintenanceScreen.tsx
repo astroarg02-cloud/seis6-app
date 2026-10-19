@@ -70,7 +70,7 @@ export const MaintenanceScreen: React.FC<MaintenanceScreenProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-[99999] h-full w-full min-h-[100dvh] flex flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto select-none transition-colors duration-300 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] ${
+      className={`fixed inset-0 z-[99999] h-full w-full min-h-full flex flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto select-none transition-colors duration-300 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] ${
         isDark
           ? 'bg-[#060608] text-white'
           : 'bg-[#F4F6FB] text-[#0F172A]'

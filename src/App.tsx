@@ -1027,7 +1027,7 @@ function AppContent() {
   // Priority 1: When maintenance mode is active, block everything for non-admins (or when admin explicitly tests visitor mode)
   if (isMaintenanceActive && ((!currentUser || currentUser.role !== 'admin') || isPreviewingAsVisitor)) {
     return (
-      <div className="relative w-full h-full min-h-[100dvh]">
+      <div className="relative w-full h-full min-h-full">
         {isPreviewingAsVisitor && (
           <div className="fixed top-0 inset-x-0 z-[100000] bg-amber-500 text-black px-4 py-2.5 text-xs font-black flex items-center justify-between shadow-2xl border-b-2 border-amber-600">
             <div className="flex items-center gap-2 min-w-0">
@@ -1058,7 +1058,7 @@ function AppContent() {
   // Priority 2: Unauthenticated view -> Mandatory AuthScreen (100% pantalla completa Edge-to-Edge)
   if (!currentUser) {
     return (
-      <div className="w-full h-full min-h-[100dvh] max-h-[100dvh] flex flex-col p-0 m-0 overflow-hidden bg-black text-white select-none">
+      <div className="w-full h-full min-h-full flex flex-col p-0 m-0 overflow-hidden bg-black text-white select-none">
         <AuthScreen onLogin={handleLogin} />
       </div>
     );
@@ -1068,7 +1068,7 @@ function AppContent() {
 
   return (
     <div
-      className={`h-[100dvh] max-h-[100dvh] w-full flex flex-col font-sans overflow-hidden select-none relative ${
+      className={`h-full min-h-full w-full flex-1 flex flex-col font-sans overflow-hidden select-none relative ${
         isDark
           ? 'bg-[#060709] text-white selection:bg-[#0066FF] selection:text-white'
           : 'bg-[#F8FAFC] text-[#0F172A] selection:bg-[#0066FF] selection:text-white'

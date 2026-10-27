@@ -100,7 +100,12 @@
       "membershipStatus": "active",
       "subscribedAt": "2026-10-12T03:44:01.104Z",
       "membershipExpiresAt": "2026-11-11T03:44:01.104Z",
-      "lastPaymentAmount": 1
+      "lastPaymentAmount": 1,
+      "bio": "",
+      "phone": "",
+      "instagram": "",
+      "customStatus": "",
+      "updatedAt": "2026-10-26T01:32:34.611Z"
     }
   },
   "raulgomez@gmail.com": {
@@ -2590,6 +2595,191 @@
       "tier": "Invitado",
       "membershipStatus": "none",
       "joinedAt": "2026-10-14"
+    }
+  },
+  "sanantonio.nova26@gmail.com": {
+    "email": "sanantonio.nova26@gmail.com",
+    "password": "1234556677",
+    "registeredAt": "2026-10-25T17:30:23.596Z",
+    "profile": {
+      "uid": "usr_mvo3sktv0fvjecf21fa25",
+      "email": "sanantonio.nova26@gmail.com",
+      "displayName": "san Antonio",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvo3sktv0fvjecf21fa25",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-25"
+    }
+  },
+  "gaunatiziano811@gmail.com": {
+    "email": "gaunatiziano811@gmail.com",
+    "password": "12345678",
+    "registeredAt": "2026-10-25T19:22:59.602Z",
+    "profile": {
+      "uid": "usr_mvo7tdpztiatp0cc58c70",
+      "email": "gaunatiziano811@gmail.com",
+      "displayName": "Tiziano",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvo7tdpztiatp0cc58c70",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-25"
+    }
+  },
+  "ortezrene805@gmail.com": {
+    "email": "ortezrene805@gmail.com",
+    "password": "minimo",
+    "registeredAt": "2026-10-26T01:10:06.870Z",
+    "profile": {
+      "uid": "usr_mvok7s72axsficac550b2",
+      "email": "ortezrene805@gmail.com",
+      "displayName": "Rene",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvok7s72axsficac550b2",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "ohajbaaimad@gmail.com": {
+    "email": "ohajbaaimad@gmail.com",
+    "password": "mijsjsisiq87@",
+    "registeredAt": "2026-10-26T00:14:53.306Z",
+    "profile": {
+      "uid": "usr_mvoi8qrop7k80eecbe457",
+      "email": "ohajbaaimad@gmail.com",
+      "displayName": "carlosmaso",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvoi8qrop7k80eecbe457",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "xcom@diego": {
+    "email": "xcom@diego",
+    "password": "123456",
+    "registeredAt": "2026-10-26T01:46:55.628Z",
+    "profile": {
+      "uid": "usr_mvolj4ruzar4me20cfc4a",
+      "email": "xcom@diego",
+      "displayName": "DIEGO",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvolj4ruzar4me20cfc4a",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "aliriopauchi521@gmail.com": {
+    "email": "aliriopauchi521@gmail.com",
+    "password": "ALIRIO...",
+    "registeredAt": "2026-10-26T01:52:43.012Z",
+    "profile": {
+      "uid": "usr_mvolqkgarcbp7a44d08df",
+      "email": "aliriopauchi521@gmail.com",
+      "displayName": "Alirio",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvolqkgarcbp7a44d08df",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "manuerfranco33@gmail.com": {
+    "email": "manuerfranco33@gmail.com",
+    "password": "maycer1212",
+    "registeredAt": "2026-10-26T02:00:11.502Z",
+    "profile": {
+      "uid": "usr_mvom06w63nu7m412a3a3d",
+      "email": "manuerfranco33@gmail.com",
+      "displayName": "Maycer",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvom06w63nu7m412a3a3d",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "nxcroxit@gmail.com": {
+    "email": "nxcroxit@gmail.com",
+    "password": "santiale29",
+    "registeredAt": "2026-10-26T02:06:48.518Z",
+    "profile": {
+      "uid": "usr_mvom8p76fr73ef82e9005",
+      "email": "nxcroxit@gmail.com",
+      "displayName": "nxcro",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvom8p76fr73ef82e9005",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "jwjjwuwuiwwl@gmail.com": {
+    "email": "jwjjwuwuiwwl@gmail.com",
+    "password": "Emilio500",
+    "registeredAt": "2026-10-26T02:27:07.045Z",
+    "profile": {
+      "uid": "usr_mvomyteuet4ir569a3772",
+      "email": "jwjjwuwuiwwl@gmail.com",
+      "displayName": "Emilio",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvomyteuet4ir569a3772",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "josecarrillo177@gmail.com": {
+    "email": "josecarrillo177@gmail.com",
+    "password": "JORGE2002",
+    "registeredAt": "2026-10-26T10:26:49.292Z",
+    "profile": {
+      "uid": "usr_mvp43pumzzo156968cfc8",
+      "email": "josecarrillo177@gmail.com",
+      "displayName": "jorge",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvp43pumzzo156968cfc8",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "egareap2020@gmail.com": {
+    "email": "egareap2020@gmail.com",
+    "password": "EGAREAPAIMBOT",
+    "registeredAt": "2026-10-26T13:04:59.587Z",
+    "profile": {
+      "uid": "usr_mvp9r4bmo0w7ybccded8f",
+      "email": "egareap2020@gmail.com",
+      "displayName": "egarsm",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=usr_mvp9r4bmo0w7ybccded8f",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-26"
+    }
+  },
+  "alvaradolio692@gmial.com": {
+    "email": "alvaradolio692@gmial.com",
+    "password": "kotarox134",
+    "registeredAt": "2026-10-27T00:31:54.184Z",
+    "profile": {
+      "uid": "usr_mvpyahwfzrzl592bbbb43",
+      "email": "alvaradolio692@gmial.com",
+      "displayName": "Lio",
+      "role": "vip_member",
+      "avatarUrl": "https://api.dicebear.com/7.x/bottts/svg?seed=BlueBot",
+      "tier": "Invitado",
+      "membershipStatus": "none",
+      "joinedAt": "2026-10-27",
+      "bio": "",
+      "phone": "",
+      "instagram": "",
+      "customStatus": "",
+      "updatedAt": "2026-10-27T00:32:13.229Z"
     }
   }
 }

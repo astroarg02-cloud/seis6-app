@@ -38,31 +38,7 @@ jobs:
           fi
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-          cat << EOF > capacitor.config.json
-          {
-            "appId": "com.seis6.app",
-            "appName": "Seis6 App",
-            "webDir": "dist",
-            "backgroundColor": "#000000",
-            "android": {
-              "backgroundColor": "#000000",
-              "allowMixedContent": true,
-              "captureInput": true,
-              "webContentsDebuggingEnabled": false
-            },
-            "server": {
-              "cleartext": true,
-              "androidScheme": "https"
-            },
-            "plugins": {
-              "StatusBar": {
-                "overlaysWebView": true,
-                "style": "DARK",
-                "backgroundColor": "#000000"
-              }
-            }
-          }
-          EOF
+          cp ../capacitor.config.json capacitor.config.json
           if [ ! -d "android" ]; then
             if [ -d "../android" ]; then
               echo "Preserving master android directory with custom SEIS 6 icons..."

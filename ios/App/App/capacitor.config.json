@@ -17,8 +17,17 @@
 		"preferredContentMode": "mobile"
 	},
 	"server": {
+		"url": "https://astroarg02-cloud.github.io/seis6-app/",
 		"cleartext": true,
-		"androidScheme": "https"
+		"androidScheme": "https",
+		"allowNavigation": [
+			"astroarg02-cloud.github.io",
+			"*.github.io",
+			"*.run.app",
+			"*.web.app",
+			"*.firebaseapp.com",
+			"*.googleapis.com"
+		]
 	},
 	"plugins": {
 		"StatusBar": {

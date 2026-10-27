@@ -6,7 +6,7 @@ import {
   CheckCircle2, XCircle, Moon, Sun, Palette, Shield, Sparkles, AlertCircle,
   Edit3, Camera, Phone, Heart, FileText, Crown, Users, Check,
   ChevronRight, ArrowRight, ExternalLink, RefreshCw, Upload, Image as ImageIcon,
-  Instagram, Settings, Copy, Wrench, Eye
+  Instagram, Settings, Copy, Wrench, Eye, Radio
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VerifiedBadge } from '../VerifiedBadge';
@@ -39,6 +39,7 @@ interface ProfileScreenProps {
   onNavigateToVault?: () => void;
   isMaintenanceActive?: boolean;
   onOpenMaintenanceModal?: () => void;
+  onOpenLiveSyncModal?: () => void;
   onPreviewAsVisitor?: () => void;
 }
 
@@ -53,6 +54,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToVault,
   isMaintenanceActive = false,
   onOpenMaintenanceModal,
+  onOpenLiveSyncModal,
   onPreviewAsVisitor,
 }) => {
   const { setTheme, isDark } = useTheme();
@@ -897,6 +899,47 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   </motion.button>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Panel de Actualizaciones en Vivo (OTA Live Updates) */}
+          {currentUser.role === 'admin' && onOpenLiveSyncModal && (
+            <div
+              className={`p-4 rounded-2xl border transition-colors ${
+                isDark ? 'bg-[#0A0A0C] border-[#1E1E24]' : 'bg-white border-[#E2E8F0] shadow-sm'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-blue-500/15 text-blue-500 border border-blue-500/30">
+                    <Radio className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-[#0F172A]'}`}>
+                      Actualizaciones en Vivo (OTA Móvil)
+                    </span>
+                    <p className={`text-[10px] ${isDark ? 'text-[#8E8E93]' : 'text-[#64748B]'}`}>
+                      Sincroniza modificaciones en la app compilada (APK/IPA) al instante
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border bg-blue-500/15 text-blue-400 border-blue-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                  <span>HOT-SYNC</span>
+                </span>
+              </div>
+
+              <motion.button
+                type="button"
+                onClick={onOpenLiveSyncModal}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/20"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>Gestionar Servidor y Forzar Sincronización</span>
+              </motion.button>
             </div>
           )}
 

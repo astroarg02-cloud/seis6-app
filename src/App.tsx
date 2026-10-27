@@ -14,9 +14,11 @@ import { AdminListModal } from './components/MobileSimulator/AdminListModal';
 import { receiptService } from './services/receiptService';
 import { MaintenanceScreen } from './components/MaintenanceScreen';
 import { AdminMaintenanceModal } from './components/AdminMaintenanceModal';
+import { AdminLiveSyncModal } from './components/AdminLiveSyncModal';
 import { CircularStartupLoader } from './components/CircularStartupLoader';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { firebaseService, resolveApiUrl, safeFetchApi, safeFetchJson, isStandaloneApp, getRemoteServerBaseUrl } from './services/firebaseService';
+import { liveSyncService } from './services/liveSyncService';
 import { supabaseService, isSupabaseConfigured } from './services/supabaseClient';
 import { 
   FolderClosed, 
@@ -35,7 +37,8 @@ import {
   Eye,
   CheckCircle2,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Radio
 } from 'lucide-react';
 
 // Helper to manage deleted list IDs in localStorage to prevent deleted lists from resurfacing
@@ -139,6 +142,7 @@ function AppContent() {
     return 'Estamos realizando labores de mantenimiento y optimización en la plataforma. Volveremos muy pronto.';
   });
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  const [showLiveSyncModal, setShowLiveSyncModal] = useState(false);
   const [isPreviewingAsVisitor, setIsPreviewingAsVisitor] = useState(false);
   const [isLiveReloading, setIsLiveReloading] = useState(false);
   const { theme, toggleTheme, isDark } = useTheme();
@@ -148,17 +152,8 @@ function AppContent() {
     setIsLiveReloading(true);
     setIsAppLoading(true);
     setLoadingProgress(40);
-    setLoadingStatusText('Sincronizando archivos en vivo...');
-    try {
-      if ('caches' in window) {
-        caches.keys().then((names) => {
-          names.forEach((name) => caches.delete(name));
-        });
-      }
-    } catch {}
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    setLoadingStatusText('Sincronizando archivos en vivo (OTA Hot-Sync)...');
+    liveSyncService.forceAppHotReload('Sincronización manual en vivo');
   }, []);
 
   // Pull-to-refresh on mobile screen top
@@ -353,6 +348,16 @@ function AppContent() {
       console.warn('Notice: Firestore maintenance listener error:', err);
     }
 
+    // Real-time Cloud OTA Live Sync listener
+    let unsubCloudLiveSync = () => {};
+    try {
+      unsubCloudLiveSync = liveSyncService.listenForCloudReloads(() => {
+        handleLiveReload();
+      });
+    } catch (err) {
+      console.warn('Notice: LiveSync cloud listener error:', err);
+    }
+
     const loadStartTime = Date.now();
     const MIN_LOADER_DURATION_MS = 1400; // Garantiza una transición circular fluida y limpia
 
@@ -376,6 +381,24 @@ function AppContent() {
 
     const loadData = async () => {
       try {
+        // Fase 0: Extracción de sesión transferida y comprobación de Live OTA en standalone
+        const transferred = liveSyncService.extractTransferredSession();
+        if (transferred) {
+          const cleanTransferred = sanitizeUserRole(transferred);
+          setCurrentUser(cleanTransferred);
+          firebaseService.saveSession(cleanTransferred);
+        }
+
+        // Si está en contenedor nativo local (APK/IPA compilado), intentar sincronizar con servidor en vivo
+        if (liveSyncService.isLocalStandalone() && liveSyncService.isLiveSyncEnabled()) {
+          setLoadingProgress(20);
+          setLoadingStatusText('Buscando servidor en vivo (OTA Hot-Sync)...');
+          const didLiveSync = await liveSyncService.syncToLiveServerIfAvailable(currentUser || transferred);
+          if (didLiveSync) {
+            return;
+          }
+        }
+
         // Fase 1: Verificación de sesión y cuentas
         setLoadingProgress(28);
         setLoadingStatusText('Verificando credenciales y acceso seguro...');
@@ -586,6 +609,7 @@ function AppContent() {
       unsubFirestoreUsers();
       unsubFirestoreReceipts();
       unsubFirestoreMaintenance();
+      unsubCloudLiveSync();
       clearInterval(interval);
     };
   }, [mergeVaultItems, mergeVaultLists]);
@@ -1123,6 +1147,23 @@ function AppContent() {
 
           {/* Right Controls: User info with Avatar, Theme & Logout */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-auto">
+            {/* Admin Live Sync (OTA Updates) Button */}
+            {currentUser.role === 'admin' && (
+              <motion.button
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setShowLiveSyncModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] sm:text-xs font-bold transition-all cursor-pointer bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20 shadow-xs"
+                title="Configurar Actualizaciones en Vivo (OTA Live Updates)"
+              >
+                <Radio className="w-3.5 h-3.5 shrink-0 text-blue-400 animate-pulse" />
+                <span className="hidden sm:inline">OTA:</span>
+                <span className="font-black text-blue-400">
+                  {liveSyncService.isCurrentlyOnLiveServer() ? 'LIVE' : 'ACTIVO'}
+                </span>
+              </motion.button>
+            )}
+
             {/* Admin Maintenance Control Button */}
             {currentUser.role === 'admin' && (
               <motion.button
@@ -1375,6 +1416,7 @@ function AppContent() {
                   }}
                   isMaintenanceActive={isMaintenanceActive}
                   onOpenMaintenanceModal={() => setShowMaintenanceModal(true)}
+                  onOpenLiveSyncModal={() => setShowLiveSyncModal(true)}
                   onPreviewAsVisitor={() => setIsPreviewingAsVisitor(true)}
                 />
               </motion.div>
@@ -1670,6 +1712,17 @@ function AppContent() {
             isMaintenance={isMaintenanceActive}
             maintenanceMessage={maintenanceMessage}
             onSave={handleSaveMaintenance}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Admin OTA Live Sync Modal */}
+      <AnimatePresence>
+        {showLiveSyncModal && (
+          <AdminLiveSyncModal
+            isOpen={showLiveSyncModal}
+            onClose={() => setShowLiveSyncModal(false)}
+            currentUser={currentUser}
           />
         )}
       </AnimatePresence>

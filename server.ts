@@ -19,6 +19,7 @@ const VAULT_FILE = path.join(DATA_DIR, 'vault_items.json');
 const VAULT_LISTS_FILE = path.join(DATA_DIR, 'vault_lists.json');
 const DELETED_LISTS_FILE = path.join(DATA_DIR, 'deleted_lists.json');
 const MAINTENANCE_FILE = path.join(DATA_DIR, 'maintenance.json');
+const LIVE_SYNC_FILE = path.join(DATA_DIR, 'live_sync.json');
 const RECEIPTS_FILE = path.join(DATA_DIR, 'receipts.json');
 const DELETED_RECEIPTS_FILE = path.join(DATA_DIR, 'deleted_receipts.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -700,6 +701,66 @@ const handlePostMaintenance = async (req: express.Request, res: express.Response
 
 app.post('/api/maintenance', handlePostMaintenance);
 app.post('/api/maintenance/status', handlePostMaintenance);
+
+// Live Sync OTA State helpers & endpoints
+interface LiveSyncState {
+  enabled: boolean;
+  liveServerUrl: string;
+  version: string;
+  forceRefreshId: string;
+  buildTimestamp: string;
+  notes: string;
+  updatedAt: string;
+}
+
+const DEFAULT_LIVE_SYNC_STATE: LiveSyncState = {
+  enabled: true,
+  liveServerUrl: 'https://astroarg02-cloud.github.io/seis6-app/',
+  version: '1.0.2',
+  forceRefreshId: 'boot-sync-1',
+  buildTimestamp: new Date().toISOString(),
+  notes: 'Actualizaciones en vivo OTA activas',
+  updatedAt: new Date().toISOString(),
+};
+
+function readLiveSyncState(): LiveSyncState {
+  try {
+    if (fs.existsSync(LIVE_SYNC_FILE)) {
+      const raw = fs.readFileSync(LIVE_SYNC_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_LIVE_SYNC_STATE, ...parsed };
+    }
+  } catch (e) {}
+  return DEFAULT_LIVE_SYNC_STATE;
+}
+
+function writeLiveSyncState(state: LiveSyncState) {
+  try {
+    fs.writeFileSync(LIVE_SYNC_FILE, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error writing live_sync.json:', e);
+  }
+}
+
+app.get('/api/live-sync', (req, res) => {
+  const state = readLiveSyncState();
+  return res.json({ success: true, ...state });
+});
+
+app.post('/api/live-sync', (req, res) => {
+  try {
+    const current = readLiveSyncState();
+    const updated: LiveSyncState = {
+      ...current,
+      ...req.body,
+      updatedAt: new Date().toISOString(),
+    };
+    writeLiveSyncState(updated);
+    return res.json({ success: true, ...updated });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // GET /api/vault/items - Fetch all items from Firestore + Server Store
 app.get('/api/vault/items', async (req, res) => {

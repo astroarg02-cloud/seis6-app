@@ -100,6 +100,42 @@ public class MainActivity extends BridgeActivity {
                     // Use LOAD_DEFAULT to automatically fetch updated assets and code from the live server
                     settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
                 } catch (Exception ignoredSettings) {}
+
+                // Register native DownloadListener for handling direct HTTP/HTTPS file downloads into Downloads folder
+                try {
+                    webView.setDownloadListener(new android.webkit.DownloadListener() {
+                        @Override
+                        public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                            try {
+                                if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                                    android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                    if (mimetype != null && !mimetype.isEmpty()) {
+                                        request.setMimeType(mimetype);
+                                    }
+                                    String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                                    if (cookies != null) {
+                                        request.addRequestHeader("cookie", cookies);
+                                    }
+                                    if (userAgent != null) {
+                                        request.addRequestHeader("User-Agent", userAgent);
+                                    }
+                                    request.setDescription("Descargando archivo en Vault Seis6...");
+                                    String guessed = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
+                                    request.setTitle(guessed);
+                                    request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, guessed);
+                                    android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                                    if (dm != null) {
+                                        dm.enqueue(request);
+                                        android.widget.Toast.makeText(getApplicationContext(), "Guardando en carpeta Descargas: " + guessed, android.widget.Toast.LENGTH_SHORT).show();
+                                    }
+                                }
+                            } catch (Exception dlEx) {
+                                dlEx.printStackTrace();
+                            }
+                        }
+                    });
+                } catch (Exception ignoredDl) {}
             }
         } catch (Exception ignored) {}
     }

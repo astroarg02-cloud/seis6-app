@@ -1,14 +1,194 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { VaultItem } from '../types';
 import { getFileFromIndexedDB } from './indexedDBStorage';
 import { resolveApiUrl, isStandaloneApp, getRemoteServerBaseUrl } from './firebaseService';
+
+export interface SaveFileResult {
+  success: boolean;
+  savedPath?: string;
+  isNative?: boolean;
+  platform?: 'android' | 'ios' | 'web';
+  openedShare?: boolean;
+  error?: string;
+}
+
+/**
+ * Helper to convert Blob to Base64 string for native Filesystem writing
+ */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Error al leer el archivo en memoria'));
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Universal file saver: handles Web, native Android (Downloads/Documents), and native iOS (Files/Documents/Share)
+ */
+export async function saveFileLocallyOrDevice(
+  blob: Blob,
+  filename: string,
+  mimeType = 'application/octet-stream'
+): Promise<SaveFileResult> {
+  const isNative = Capacitor.isNativePlatform();
+  const platform = Capacitor.getPlatform() as 'android' | 'ios' | 'web';
+
+  // 1. Web Browser Environment
+  if (!isNative) {
+    try {
+      saveAs(blob, filename);
+      return { success: true, savedPath: `Descargas (${filename})`, isNative: false, platform: 'web' };
+    } catch (webErr) {
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (document.body.contains(a)) document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 1200);
+        return { success: true, savedPath: `Descargas (${filename})`, isNative: false, platform: 'web' };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'Error al guardar el archivo en el navegador.' };
+      }
+    }
+  }
+
+  // 2. Native Mobile Environment (Android APK & iOS App)
+  try {
+    const base64Data = await blobToBase64(blob);
+
+    // Request permissions on Android if needed
+    if (platform === 'android') {
+      try {
+        const permStatus = await Filesystem.checkPermissions();
+        if (permStatus.publicStorage !== 'granted') {
+          await Filesystem.requestPermissions();
+        }
+      } catch (pErr) {
+        console.warn('[Filesystem] Permission check notice:', pErr);
+      }
+    }
+
+    let savedUri = '';
+    let savedLocation = '';
+
+    if (platform === 'android') {
+      // Primary: Save directly in Android public "Download" directory
+      try {
+        const res = await Filesystem.writeFile({
+          path: `Download/${filename}`,
+          data: base64Data,
+          directory: Directory.ExternalStorage,
+          recursive: true,
+        });
+        savedUri = res.uri;
+        savedLocation = `Carpeta Descargas (${filename})`;
+      } catch (androidErr1) {
+        console.warn('[Filesystem] Could not write to Download/ under ExternalStorage, attempting Documents:', androidErr1);
+        try {
+          const res = await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true,
+          });
+          savedUri = res.uri;
+          savedLocation = `Carpeta Documentos (${filename})`;
+        } catch (androidErr2) {
+          console.warn('[Filesystem] Could not write to Documents, attempting Data folder:', androidErr2);
+          const res = await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: Directory.Data,
+            recursive: true,
+          });
+          savedUri = res.uri;
+          savedLocation = `Almacenamiento del dispositivo (${filename})`;
+        }
+      }
+    } else {
+      // iOS: Save to Documents directory (integrated with iOS Files app via UIFileSharingEnabled)
+      try {
+        const res = await Filesystem.writeFile({
+          path: filename,
+          data: base64Data,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+        savedUri = res.uri;
+        savedLocation = `Archivos de iPhone > Seis6 App > Descargas (${filename})`;
+      } catch (iosErr) {
+        console.warn('[Filesystem iOS] Could not write to Documents, attempting Cache:', iosErr);
+        const res = await Filesystem.writeFile({
+          path: filename,
+          data: base64Data,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+        savedUri = res.uri;
+        savedLocation = `Archivos (${filename})`;
+      }
+    }
+
+    // Invoke Native Share Sheet so the user can easily open, send, or save to custom location
+    let openedShare = false;
+    try {
+      if (savedUri) {
+        await Share.share({
+          title: filename,
+          text: `Archivo descargado: ${filename}`,
+          url: savedUri,
+          dialogTitle: `Guardar o abrir ${filename}`,
+        });
+        openedShare = true;
+      }
+    } catch (shareErr) {
+      // If user dismisses the share sheet, the file is ALREADY saved in storage!
+      console.log('[Share] Share modal dismissed or completed:', shareErr);
+    }
+
+    return {
+      success: true,
+      savedPath: savedLocation,
+      isNative: true,
+      platform,
+      openedShare,
+    };
+  } catch (nativeErr: any) {
+    console.error('[Filesystem Native Save Error]:', nativeErr);
+    // Last-ditch fallback
+    try {
+      saveAs(blob, filename);
+      return { success: true, savedPath: `Descargas (${filename})`, isNative: true, platform };
+    } catch (fbErr: any) {
+      return {
+        success: false,
+        isNative: true,
+        platform,
+        error: nativeErr?.message || 'Error al escribir el archivo en el almacenamiento del dispositivo.',
+      };
+    }
+  }
+}
 
 /**
  * Helper to determine clean file extension and MIME type from item data
  */
 function resolveItemFileDetails(item: VaultItem): { filename: string; mimeType: string; isZip: boolean } {
-  // If the item has an explicit fileName, prioritize it
   if (item.fileName && item.fileName.includes('.')) {
     const ext = item.fileName.split('.').pop()?.toLowerCase() || '';
     const mimeMap: Record<string, string> = {
@@ -76,25 +256,23 @@ function resolveItemFileDetails(item: VaultItem): { filename: string; mimeType: 
 }
 
 /**
- * Downloads the actual resource in its exact original format without modifying anything
+ * Downloads the actual resource in its exact original format and saves to the native device's Downloads folder
  */
-export async function downloadVaultItemResource(item: VaultItem): Promise<boolean> {
+export async function downloadVaultItemResource(item: VaultItem): Promise<SaveFileResult> {
   try {
     const { filename, mimeType, isZip } = resolveItemFileDetails(item);
     const targetFilename = item.fileName || filename;
 
     // Case 1: Direct in-memory raw File/Blob from upload session
     if (item.rawFileBlob) {
-      saveAs(item.rawFileBlob, targetFilename);
-      return true;
+      return await saveFileLocallyOrDevice(item.rawFileBlob, targetFilename, mimeType);
     }
 
     // Case 2: IndexedDB local persistent cache (preserves 100% real files across reloads)
     try {
       const localCached = await getFileFromIndexedDB(item.id);
       if (localCached && localCached.blob) {
-        saveAs(localCached.blob, targetFilename);
-        return true;
+        return await saveFileLocallyOrDevice(localCached.blob, targetFilename, mimeType);
       }
     } catch (idbErr) {
       console.warn('IndexedDB retrieval error:', idbErr);
@@ -105,12 +283,10 @@ export async function downloadVaultItemResource(item: VaultItem): Promise<boolea
       if (item.fileData.startsWith('data:')) {
         const response = await fetch(item.fileData);
         const blob = await response.blob();
-        saveAs(blob, targetFilename);
-        return true;
+        return await saveFileLocallyOrDevice(blob, targetFilename, mimeType);
       } else {
         const blob = new Blob([item.fileData], { type: mimeType });
-        saveAs(blob, targetFilename);
-        return true;
+        return await saveFileLocallyOrDevice(blob, targetFilename, mimeType);
       }
     }
 
@@ -125,8 +301,7 @@ export async function downloadVaultItemResource(item: VaultItem): Promise<boolea
         const response = await fetch(item.downloadUrl);
         if (response.ok) {
           const blob = await response.blob();
-          saveAs(blob, targetFilename);
-          return true;
+          return await saveFileLocallyOrDevice(blob, targetFilename, mimeType);
         }
       } catch (err) {
         console.warn('Could not download directly from external cloud URL:', err);
@@ -134,29 +309,18 @@ export async function downloadVaultItemResource(item: VaultItem): Promise<boolea
     }
 
     // Case 5: Dedicated backend server download endpoint (/api/vault/download/:id)
-    // Only attempted if running in full-stack web mode or a remote backend server URL is configured
     if (item.id && (!isStandaloneApp() || getRemoteServerBaseUrl())) {
       try {
         const serverUrl = resolveApiUrl(`/api/vault/download/${encodeURIComponent(item.id)}`);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        const headCheck = await fetch(serverUrl, { method: 'HEAD', signal: controller.signal });
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(serverUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
-        const contentType = headCheck.headers.get('content-type') || '';
-        // Only trigger download if response is not the HTML SPA fallback
-        if (headCheck.ok && !contentType.includes('text/html')) {
-          const link = document.createElement('a');
-          link.href = serverUrl;
-          link.download = targetFilename;
-          link.target = '_blank';
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => {
-            if (document.body.contains(link)) {
-              document.body.removeChild(link);
-            }
-          }, 400);
-          return true;
+        const contentType = res.headers.get('content-type') || '';
+        // Only accept if not the fallback HTML SPA
+        if (res.ok && !contentType.includes('text/html')) {
+          const blob = await res.blob();
+          return await saveFileLocallyOrDevice(blob, targetFilename, contentType || mimeType);
         }
       } catch (srvErr) {
         console.warn('Server endpoint download check notice:', srvErr);
@@ -209,8 +373,7 @@ startxref
 490
 %%EOF`;
         const blob = new Blob([pdfContent], { type: 'application/pdf' });
-        saveAs(blob, filename);
-        return true;
+        return await saveFileLocallyOrDevice(blob, filename, 'application/pdf');
       }
 
       // Raw text or configuration/preset
@@ -222,11 +385,10 @@ Autor: ${item.author?.name || 'Admin'}
 ${item.description}
 `;
       const blob = new Blob([rawText], { type: mimeType });
-      saveAs(blob, filename);
-      return true;
+      return await saveFileLocallyOrDevice(blob, filename, mimeType);
     }
 
-    // Case 5: Standard Clean ZIP Package (Contains the original resource files and neutral info)
+    // Case 7: Standard Clean ZIP Package (Contains the original resource files and neutral info)
     const zip = new JSZip();
     const slug = (item.title || 'recurso')
       .toLowerCase()
@@ -291,11 +453,10 @@ ${item.description}
       compressionOptions: { level: 6 },
     });
 
-    saveAs(zipBlob, filename);
-    return true;
-  } catch (error) {
+    return await saveFileLocallyOrDevice(zipBlob, filename, 'application/zip');
+  } catch (error: any) {
     console.error('Error al descargar archivo original:', error);
-    return false;
+    return { success: false, error: error?.message || 'Error durante la preparación de la descarga' };
   }
 }
 
@@ -379,8 +540,8 @@ Tu APK estará lista en:
       compression: 'DEFLATE',
       compressionOptions: { level: 6 },
     });
-    saveAs(blob, 'Seis6_Vault_Vite_Android_Project.zip');
-    return true;
+    const saveRes = await saveFileLocallyOrDevice(blob, 'Seis6_Vault_Vite_Android_Project.zip', 'application/zip');
+    return saveRes.success;
   } catch (err) {
     console.error('Error exportando proyecto Android Vite:', err);
     return false;

@@ -12,6 +12,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { receiptService } from '../../services/receiptService';
 import { firebaseService, safeFetchApi } from '../../services/firebaseService';
 import { WHATSAPP_CONTACT_PHONE, WHATSAPP_PHONE_RAW } from './MembershipScreen';
+import { saveFileLocallyOrDevice } from '../../services/zipExporter';
 
 interface ReceiptsScreenProps {
   currentUser: UserProfile;
@@ -1216,15 +1217,21 @@ export const ReceiptsScreen: React.FC<ReceiptsScreenProps> = ({
 
               {/* Modal Footer */}
               <div className="p-4 border-t border-inherit flex items-center justify-between gap-2">
-                <a
-                  href={viewingReceipt.receiptImageUrl}
-                  download={viewingReceipt.receiptFileName || 'comprobante.jpg'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-700 hover:bg-white/10 transition-colors"
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const resp = await fetch(viewingReceipt.receiptImageUrl);
+                      const blob = await resp.blob();
+                      await saveFileLocallyOrDevice(blob, viewingReceipt.receiptFileName || 'comprobante.jpg', 'image/jpeg');
+                    } catch (e) {
+                      window.open(viewingReceipt.receiptImageUrl, '_blank');
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-700 hover:bg-white/10 transition-colors cursor-pointer"
                 >
-                  Abrir Imagen Original
-                </a>
+                  Descargar Comprobante
+                </button>
 
                 {isAdmin && viewingReceipt.status === 'pending' && (
                   <div className="flex items-center gap-2">

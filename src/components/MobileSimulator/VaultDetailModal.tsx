@@ -40,6 +40,7 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({
   const isLiked = Array.isArray(item.likedBy) && item.likedBy.includes(currentUser.uid);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloadSuccessPath, setDownloadSuccessPath] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isReuploading, setIsReuploading] = useState(false);
   const [reuploadProgress, setReuploadProgress] = useState<number | null>(null);
@@ -65,14 +66,21 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({
     if (downloadProgress !== null || isDownloaded) return;
     setDownloadProgress(25);
     setDownloadError(null);
+    setDownloadSuccessPath(null);
 
     try {
       setDownloadProgress(65);
-      const success = await downloadVaultItemResource(item);
+      const res = await downloadVaultItemResource(item);
       setDownloadProgress(100);
 
-      if (success) {
+      const isSuccess = typeof res === 'boolean' ? res : res?.success;
+      const savedPath = typeof res === 'object' ? res?.savedPath : undefined;
+
+      if (isSuccess) {
         setIsDownloaded(true);
+        if (savedPath) {
+          setDownloadSuccessPath(savedPath);
+        }
         confetti({
           particleCount: 50,
           spread: 70,
@@ -80,20 +88,22 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({
           colors: ['#0066FF', '#3385FF', '#10B981', '#FFFFFF'],
         });
 
-        // Devolver al usuario a la página de la bóveda después de descargar
+        // Dar tiempo al usuario para ver la ruta donde se guardó el archivo
         setTimeout(() => {
           onClose();
-        }, 1200);
+        }, 2600);
       } else {
-        setDownloadError(
-          item.fileName
-            ? `El archivo físico original ("${item.fileName}") no se encuentra en el servidor.${currentUser.role === 'admin' ? ' Puedes adjuntarlo con el botón "Re-subir archivo real" a continuación.' : ' Contacta al administrador.'}`
-            : 'No hay archivo descargable disponible para esta publicación.'
-        );
+        const errorMsg =
+          typeof res === 'object' && res?.error
+            ? res.error
+            : item.fileName
+            ? `El archivo original ("${item.fileName}") no se pudo descargar en el dispositivo.${currentUser.role === 'admin' ? ' Puedes adjuntarlo con el botón "Re-subir archivo real" a continuación.' : ' Contacta al administrador.'}`
+            : 'No hay archivo descargable disponible para esta publicación.';
+        setDownloadError(errorMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error during item download:', err);
-      setDownloadError('Ocurrió un error al descargar el archivo.');
+      setDownloadError(err?.message || 'Ocurrió un error al descargar el archivo.');
     } finally {
       setTimeout(() => {
         setDownloadProgress(null);
@@ -619,6 +629,23 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({
                 <span>{item.fileName ? `Archivo original: ${item.fileName}` : 'Descarga directa en formato original'}</span>
                 <span>Formato Genuino • Verificado</span>
               </div>
+
+              {/* Download Success Location Banner */}
+              {downloadSuccessPath && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs flex items-start gap-2.5"
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                  <div className="flex-1">
+                    <p className="font-bold text-white text-xs">Descarga completada</p>
+                    <p className="text-emerald-300 text-[11px] mt-0.5 leading-relaxed">
+                      Guardado en: <span className="font-semibold text-white">{downloadSuccessPath}</span>
+                    </p>
+                  </div>
+                </motion.div>
+              )}
             </div>
           ) : null}
 

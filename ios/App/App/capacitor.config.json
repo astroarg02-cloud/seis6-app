@@ -36,5 +36,8 @@
 			"backgroundColor": "#000000"
 		}
 	},
-	"packageClassList": []
+	"packageClassList": [
+		"FilesystemPlugin",
+		"SharePlugin"
+	]
 }

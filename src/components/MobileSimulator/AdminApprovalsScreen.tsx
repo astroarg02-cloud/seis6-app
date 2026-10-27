@@ -37,6 +37,7 @@ import { UserProfile, PaymentReceipt, ReceiptStatus, MembershipPlanType } from '
 import { useTheme } from '../../context/ThemeContext';
 import { receiptService } from '../../services/receiptService';
 import { firebaseService, resolveApiUrl, safeFetchApi } from '../../services/firebaseService';
+import { saveFileLocallyOrDevice } from '../../services/zipExporter';
 
 interface AdminApprovalsScreenProps {
   currentUser: UserProfile;
@@ -866,15 +867,23 @@ export const AdminApprovalsScreen: React.FC<AdminApprovalsScreenProps> = ({
               </div>
 
               <div className="mt-3 flex items-center gap-3">
-                <a
-                  href={lightboxImage.url}
-                  download="comprobante_pago.jpg"
-                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      const resp = await fetch(lightboxImage.url);
+                      const blob = await resp.blob();
+                      await saveFileLocallyOrDevice(blob, 'comprobante_pago.jpg', 'image/jpeg');
+                    } catch (dlErr) {
+                      console.warn('Download error:', dlErr);
+                    }
+                  }}
                 >
                   <Download className="w-4 h-4" />
                   Descargar Imagen
-                </a>
+                </button>
               </div>
             </div>
           </motion.div>

@@ -1133,11 +1133,6 @@ function AppContent() {
               <div className="absolute inset-0 rounded-2xl bg-white/15 opacity-0 hover:opacity-100 transition-opacity" />
             </motion.div>
 
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 shrink-0 shadow-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.9)]" />
-              <span>En línea</span>
-            </div>
-
             {isSupabaseConfigured && (
               <span className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 <Database className="w-2.5 h-2.5" /> SUPABASE
@@ -1436,8 +1431,8 @@ function AppContent() {
             ? 'bg-zinc-950/90 border-white/[0.12] ring-1 ring-inset ring-white/[0.05] shadow-[0_16px_40px_rgba(0,0,0,0.85)]' 
             : 'bg-white/95 border-slate-200/90 ring-1 ring-inset ring-slate-100 shadow-[0_12px_32px_rgba(0,0,0,0.12)]'
         }`}>
-          {/* Publicaciones (SOLO ICONO, DISPONIBLE PARA TODOS) */}
-          {(() => {
+          {/* Publicaciones (SOLO ICONO, EXCLUSIVO PARA ADMINISTRACIÓN) */}
+          {currentUser?.role === 'admin' && (() => {
             const isActive = currentTab === 'vault' && vaultTabMode === 'items' && !selectedVaultListId;
             return (
               <motion.button

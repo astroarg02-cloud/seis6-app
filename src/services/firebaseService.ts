@@ -542,7 +542,7 @@ export function getStoredRegisteredAccounts(): Record<string, RegisteredAccountR
         tier: 'Bóveda Diamante',
         bio: 'Administrador central de Bóveda App 66. Gestión de contenidos y verificaciones.',
         phone: '+54 9 11 6554-6038',
-        customStatus: '🛡️ En línea - Modo Administrador',
+        customStatus: '🛡️ Modo Administrador',
       },
       registeredAt: '2025-01-01T00:00:00.000Z',
     },

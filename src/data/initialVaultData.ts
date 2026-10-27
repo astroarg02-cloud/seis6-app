@@ -30,7 +30,7 @@ export const INITIAL_ADMIN_USER: UserProfile = {
   membershipStatus: 'none',
   bio: 'Owner Oficial del Sei6 🛠️',
   phone: '+54 9 11 6554-6038',
-  customStatus: 'En línea 🟢',
+  customStatus: 'Modo Administrador',
   instagram: 'spig9tv',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
 };

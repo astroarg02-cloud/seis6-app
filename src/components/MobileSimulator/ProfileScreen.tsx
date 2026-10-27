@@ -657,7 +657,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     onClick={onNavigateToVault}
                     className="mt-3 px-3.5 py-1.5 rounded-xl bg-[#0066FF] text-white text-xs font-bold cursor-pointer"
                   >
-                    Ver Publicaciones
+                    Ver Colecciones
                   </button>
                 )}
               </div>

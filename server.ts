@@ -914,8 +914,12 @@ app.post('/api/vault/upload', async (req, res) => {
       }
     }
 
-    // If item has fileName/fileType and no downloadUrl, point to server download endpoint
-    if (!newItem.downloadUrl && (newItem.fileName || newItem.fileType)) {
+    // If mediafireUrl or external downloadUrl is provided, keep it as the primary downloadUrl
+    if (newItem.mediafireUrl) {
+      newItem.downloadUrl = newItem.mediafireUrl;
+    } else if (newItem.downloadUrl && newItem.downloadUrl.includes('mediafire.com')) {
+      newItem.mediafireUrl = newItem.downloadUrl;
+    } else if (!newItem.downloadUrl && (newItem.fileName || newItem.fileType)) {
       newItem.downloadUrl = `/api/vault/download/${encodeURIComponent(newItem.id)}`;
     }
 
@@ -956,6 +960,12 @@ const handleFileDownload = (req: express.Request, res: express.Response) => {
   let item = items.find((i) => i.id === id);
   if (!item) {
     item = items.find((i) => i.downloadUrl && (i.downloadUrl.includes(`/${id}`) || i.downloadUrl.includes(encodeURIComponent(id))));
+  }
+
+  // 0. Priority redirect to MediaFire or external link
+  if (item && (item.mediafireUrl || (item.downloadUrl && item.downloadUrl.startsWith('http')))) {
+    const target = item.mediafireUrl || item.downloadUrl;
+    return res.redirect(target);
   }
 
   // 1. Check in uploads dir

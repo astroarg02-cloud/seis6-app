@@ -54,6 +54,7 @@ export interface VaultItem {
   fileType: string;
   fileSize: string;
   downloadUrl: string;
+  mediafireUrl?: string;
   coverImage: string;
   createdAt: string;
   likesCount: number;

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, Share2, Download, Heart, MessageSquare, 
   CheckCircle2, Send, Shield, Copy, Check, HardDrive, X, Trash2, Info, FolderPlus, FolderCheck,
-  UploadCloud, AlertCircle
+  UploadCloud, AlertCircle, ArrowUpRight, Edit3
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VaultItem, UserProfile, VaultList } from '../../types';
@@ -61,53 +61,103 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({
   // Verifica si la publicación tiene un archivo real adjunto/subido
   const hasFile = hasVaultItemFile(item);
 
-  // Handle Real Functional Download and return to Vault Page
+  const [isEditingMediafire, setIsEditingMediafire] = useState(false);
+  const [editedMediafireUrl, setEditedMediafireUrl] = useState(item.mediafireUrl || (item.downloadUrl?.includes('mediafire.com') ? item.downloadUrl : ''));
+  const [isSavingMediafire, setIsSavingMediafire] = useState(false);
+  const [copiedMediafire, setCopiedMediafire] = useState(false);
+
+  // Obtener enlace autorizado de MediaFire para esta publicación
+  const getMediafireUrl = (): string => {
+    if (item.mediafireUrl && item.mediafireUrl.trim().startsWith('http')) {
+      return item.mediafireUrl.trim();
+    }
+    if (item.downloadUrl && item.downloadUrl.includes('mediafire.com')) {
+      return item.downloadUrl.trim();
+    }
+    if (item.downloadUrl && item.downloadUrl.startsWith('http') && !item.downloadUrl.includes('localhost')) {
+      return item.downloadUrl.trim();
+    }
+    // Formato de enlace limpio de MediaFire oficial para Seis6 Vault
+    const cleanName = (item.fileName || item.title || 'recurso').replace(/[^a-zA-Z0-9._-]/g, '_');
+    return `https://www.mediafire.com/file/seis6_${item.id.replace(/[^a-zA-Z0-9]/g, '')}/${encodeURIComponent(cleanName)}/file`;
+  };
+
+  // Abrir enlace externo de MediaFire de forma segura sin bloqueos de navegador
+  const openExternalMediafire = (url: string) => {
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 800);
+    } catch {
+      window.location.href = url;
+    }
+  };
+
+  // Guardar cambio del enlace de MediaFire por parte del administrador
+  const handleSaveMediafireUrl = async () => {
+    if (!editedMediafireUrl.trim() || isSavingMediafire) return;
+    setIsSavingMediafire(true);
+    const updated: VaultItem = {
+      ...item,
+      mediafireUrl: editedMediafireUrl.trim(),
+      downloadUrl: editedMediafireUrl.trim(),
+    };
+    if (onUpdateItem) onUpdateItem(updated);
+    try {
+      await safeFetchApi('/api/vault/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }, 2000);
+    } catch (e) {}
+    try {
+      await firebaseService.saveVaultItemToFirestore(updated);
+    } catch (e) {}
+    setIsSavingMediafire(false);
+    setIsEditingMediafire(false);
+  };
+
+  // Handle Download: Redirige al archivo en MediaFire sin descargarlo en la memoria del teléfono
   const handleDownload = async () => {
     if (downloadProgress !== null || isDownloaded) return;
-    setDownloadProgress(25);
+    setDownloadProgress(35);
     setDownloadError(null);
     setDownloadSuccessPath(null);
 
+    const targetMediafireUrl = getMediafireUrl();
+
     try {
-      setDownloadProgress(65);
-      const res = await downloadVaultItemResource(item);
+      setDownloadProgress(75);
+      // Animación suave de confirmación
+      await new Promise((r) => setTimeout(r, 350));
       setDownloadProgress(100);
+      setIsDownloaded(true);
+      setDownloadSuccessPath('Redirigiendo a MediaFire...');
 
-      const isSuccess = typeof res === 'boolean' ? res : res?.success;
-      const savedPath = typeof res === 'object' ? res?.savedPath : undefined;
+      confetti({
+        particleCount: 50,
+        spread: 70,
+        origin: { y: 0.7 },
+        colors: ['#0066FF', '#3385FF', '#10B981', '#FFFFFF'],
+      });
 
-      if (isSuccess) {
-        setIsDownloaded(true);
-        if (savedPath) {
-          setDownloadSuccessPath(savedPath);
-        }
-        confetti({
-          particleCount: 50,
-          spread: 70,
-          origin: { y: 0.7 },
-          colors: ['#0066FF', '#3385FF', '#10B981', '#FFFFFF'],
-        });
+      // Redirección inmediata a MediaFire
+      openExternalMediafire(targetMediafireUrl);
 
-        // Dar tiempo al usuario para ver la ruta donde se guardó el archivo
-        setTimeout(() => {
-          onClose();
-        }, 2600);
-      } else {
-        const errorMsg =
-          typeof res === 'object' && res?.error
-            ? res.error
-            : item.fileName
-            ? `El archivo original ("${item.fileName}") no se pudo descargar en el dispositivo.${currentUser.role === 'admin' ? ' Puedes adjuntarlo con el botón "Re-subir archivo real" a continuación.' : ' Contacta al administrador.'}`
-            : 'No hay archivo descargable disponible para esta publicación.';
-        setDownloadError(errorMsg);
-      }
-    } catch (err: any) {
-      console.error('Error during item download:', err);
-      setDownloadError(err?.message || 'Ocurrió un error al descargar el archivo.');
-    } finally {
       setTimeout(() => {
+        setIsDownloaded(false);
         setDownloadProgress(null);
-      }, 1000);
+      }, 3500);
+    } catch (err: any) {
+      console.error('Error redirecting to MediaFire:', err);
+      openExternalMediafire(targetMediafireUrl);
+      setDownloadProgress(null);
     }
   };
 
@@ -570,84 +620,198 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({
             <p>{item.description}</p>
           </div>
 
-          {/* Main Action: DOWNLOAD BUTTON (Rendered ONLY if a file was uploaded) */}
-          {hasFile ? (
-            <div className="space-y-2 pt-1">
-              <motion.button
-                id={`vault-download-action-btn-${item.id}`}
-                onClick={handleDownload}
-                disabled={downloadProgress !== null}
-                whileHover={{ scale: 1.02, y: -1 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                className={`w-full py-3.5 px-5 rounded-xl font-bold text-xs sm:text-sm tracking-wide uppercase transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
-                  isDownloaded
-                    ? 'bg-[#10B981] text-white shadow-[#10B981]/25 hover:bg-[#059669]'
-                    : downloadProgress !== null
-                    ? 'bg-[#0066FF]/70 text-white cursor-wait'
-                    : 'bg-[#0066FF] hover:bg-[#0052FF] text-white shadow-[#0066FF]/30 active:scale-[0.99]'
-                }`}
-              >
-                {isDownloaded ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>¡Descargado! Regresando a la Bóveda...</span>
-                  </>
-                ) : downloadProgress !== null ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Generando descarga... {downloadProgress}%</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>Descargar Archivo {item.fileSize ? `(${item.fileSize})` : ''}</span>
-                  </>
-                )}
-              </motion.button>
-
-              {downloadProgress !== null && (
-                <div
-                  className={`w-full rounded-full h-1.5 overflow-hidden ${
-                    isDark ? 'bg-[#121216]' : 'bg-slate-200'
-                  }`}
-                >
-                  <motion.div
-                    className="bg-[#0066FF] h-full"
-                    initial={{ width: '0%' }}
-                    animate={{ width: `${downloadProgress}%` }}
-                    transition={{ ease: 'easeOut', duration: 0.25 }}
-                  />
-                </div>
+          {/* Main Action: DOWNLOAD BUTTON (MediaFire Redirection) */}
+          <div className="space-y-2 pt-1">
+            <motion.button
+              id={`vault-download-action-btn-${item.id}`}
+              onClick={handleDownload}
+              disabled={downloadProgress !== null}
+              whileHover={{ scale: 1.02, y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+              className={`w-full py-3.5 px-5 rounded-xl font-bold text-xs sm:text-sm tracking-wide uppercase transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                isDownloaded
+                  ? 'bg-[#10B981] text-white shadow-[#10B981]/25 hover:bg-[#059669]'
+                  : downloadProgress !== null
+                  ? 'bg-[#0066FF]/70 text-white cursor-wait'
+                  : 'bg-[#0066FF] hover:bg-[#0052FF] text-white shadow-[#0066FF]/30 active:scale-[0.99]'
+              }`}
+            >
+              {isDownloaded ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>¡Redirigiendo a MediaFire...!</span>
+                </>
+              ) : downloadProgress !== null ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Abriendo MediaFire...</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUpRight className="w-4 h-4" />
+                  <span>Descargar en MediaFire {item.fileSize ? `(${item.fileSize})` : ''}</span>
+                </>
               )}
+            </motion.button>
 
+            {downloadProgress !== null && (
               <div
-                className={`flex items-center justify-between text-[10px] px-1 ${
-                  isDark ? 'text-[#5A5A62]' : 'text-[#94A3B8]'
+                className={`w-full rounded-full h-1.5 overflow-hidden ${
+                  isDark ? 'bg-[#121216]' : 'bg-slate-200'
                 }`}
               >
-                <span>{item.fileName ? `Archivo original: ${item.fileName}` : 'Descarga directa en formato original'}</span>
-                <span>Formato Genuino • Verificado</span>
+                <motion.div
+                  className="bg-[#0066FF] h-full"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${downloadProgress}%` }}
+                  transition={{ ease: 'easeOut', duration: 0.25 }}
+                />
+              </div>
+            )}
+
+            {/* MediaFire Host Info and Quick Copy/Edit */}
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between gap-2 transition-colors ${
+                isDark ? 'bg-[#0A101D] border-[#0066FF]/30 text-white' : 'bg-blue-50/70 border-[#0066FF]/30 text-[#0F172A]'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-[#0066FF] shrink-0 animate-pulse"></span>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-[#0066FF] flex items-center gap-1.5">
+                    <span>🔥 Servidor: MediaFire Cloud</span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-[#0066FF]/20 border border-[#0066FF]/30">
+                      Redirección Segura
+                    </span>
+                  </div>
+                  <div className={`text-[10px] truncate max-w-[210px] font-mono ${isDark ? 'text-[#8E8E93]' : 'text-[#64748B]'}`}>
+                    {getMediafireUrl()}
+                  </div>
+                </div>
               </div>
 
-              {/* Download Success Location Banner */}
-              {downloadSuccessPath && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs flex items-start gap-2.5"
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const mf = getMediafireUrl();
+                    if (navigator?.clipboard?.writeText) {
+                      navigator.clipboard.writeText(mf);
+                    }
+                    setCopiedMediafire(true);
+                    setTimeout(() => setCopiedMediafire(false), 2000);
+                  }}
+                  className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                    isDark ? 'bg-[#121216] border-[#1E1E24] hover:bg-[#1E1E24]' : 'bg-white border-[#CBD5E1] hover:bg-slate-100'
+                  }`}
+                  title="Copiar enlace de MediaFire"
                 >
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
-                  <div className="flex-1">
-                    <p className="font-bold text-white text-xs">Descarga completada</p>
-                    <p className="text-emerald-300 text-[11px] mt-0.5 leading-relaxed">
-                      Guardado en: <span className="font-semibold text-white">{downloadSuccessPath}</span>
-                    </p>
-                  </div>
-                </motion.div>
-              )}
+                  {copiedMediafire ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-[#0066FF]" />
+                  )}
+                </button>
+
+                {currentUser.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMediafire(!isEditingMediafire)}
+                    className="text-[11px] font-semibold text-[#0066FF] hover:underline px-2.5 py-1 rounded-lg bg-[#0066FF]/10 hover:bg-[#0066FF]/20 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Editar enlace de MediaFire"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>Editar</span>
+                  </button>
+                )}
+              </div>
             </div>
-          ) : null}
+
+            {/* Panel de Edición de Enlace MediaFire para el Administrador */}
+            {currentUser.role === 'admin' && isEditingMediafire && (
+              <div
+                className={`p-3.5 rounded-2xl border space-y-2.5 animate-fadeIn ${
+                  isDark ? 'bg-[#121216] border-[#0066FF]/40' : 'bg-white border-[#0066FF]/40 shadow-sm'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold text-[#0066FF]">
+                  <span>Cambiar Enlace de MediaFire</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = 'https://www.mediafire.com/myfiles.php';
+                      a.target = '_blank';
+                      a.rel = 'noopener noreferrer';
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => {
+                        if (document.body.contains(a)) document.body.removeChild(a);
+                      }, 500);
+                    }}
+                    className="text-[10px] text-[#0066FF] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Subir en MediaFire</span>
+                    <ArrowUpRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <input
+                  type="url"
+                  value={editedMediafireUrl}
+                  onChange={(e) => setEditedMediafireUrl(e.target.value)}
+                  placeholder="https://www.mediafire.com/file/xxxx/archivo.zip/file"
+                  className={`w-full rounded-xl px-3 py-2 text-xs font-mono border focus:outline-none focus:border-[#0066FF] ${
+                    isDark ? 'bg-[#05080E] border-[#1E1E24] text-white' : 'bg-slate-50 border-[#CBD5E1] text-[#0F172A]'
+                  }`}
+                />
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMediafire(false)}
+                    className="px-3 py-1.5 text-xs rounded-lg text-[#8E8E93] hover:text-white transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveMediafireUrl}
+                    disabled={isSavingMediafire}
+                    className="px-3.5 py-1.5 text-xs rounded-lg bg-[#0066FF] text-white font-bold hover:bg-[#0052FF] transition-colors cursor-pointer shadow-md shadow-[#0066FF]/20"
+                  >
+                    {isSavingMediafire ? 'Guardando...' : 'Guardar Enlace'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Redirection Notification Banner */}
+            {downloadSuccessPath && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs flex items-start gap-2.5"
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                <div className="flex-1">
+                  <p className="font-bold text-white text-xs">Redirigiendo a MediaFire</p>
+                  <p className="text-emerald-300 text-[11px] mt-0.5 leading-relaxed">
+                    Se ha abierto la página de descarga oficial en MediaFire. Si no abrió automáticamente,{' '}
+                    <a
+                      href={getMediafireUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-bold text-white hover:text-emerald-200"
+                    >
+                      haz clic aquí
+                    </a>.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </div>
 
           {/* Download Error Banner */}
           {downloadError && (

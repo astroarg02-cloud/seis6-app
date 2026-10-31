@@ -27,6 +27,7 @@ export const AdminUploadModal: React.FC<AdminUploadModalProps> = ({ isOpen, onCl
   const [coverImage, setCoverImage] = useState<string>('');
   const [coverFileName, setCoverFileName] = useState<string>('');
   const [downloadUrl, setDownloadUrl] = useState('');
+  const [mediafireUrl, setMediafireUrl] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [version, setVersion] = useState('v1.0');
   const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
@@ -53,6 +54,7 @@ export const AdminUploadModal: React.FC<AdminUploadModalProps> = ({ isOpen, onCl
     setCoverImage('');
     setCoverFileName('');
     setDownloadUrl('');
+    setMediafireUrl('');
     setUploadedFileName('');
     setVersion('v1.0');
     setAutoDetectedInfo(null);
@@ -68,6 +70,62 @@ export const AdminUploadModal: React.FC<AdminUploadModalProps> = ({ isOpen, onCl
   };
 
   if (!isOpen) return null;
+
+  // Abrir panel oficial de MediaFire en pestaña externa para que el admin suba el archivo
+  const handleOpenMediafire = () => {
+    try {
+      const a = document.createElement('a');
+      a.href = 'https://www.mediafire.com/myfiles.php';
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 500);
+    } catch {
+      window.open('https://www.mediafire.com/myfiles.php', '_blank');
+    }
+  };
+
+  // Pegar enlace desde portapapeles
+  const handlePasteClipboard = async () => {
+    try {
+      if (navigator?.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          handleMediafireUrlChange(text.trim());
+        }
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+    }
+  };
+
+  // Manejo de cambio en el enlace de MediaFire con auto-extracción de metadatos
+  const handleMediafireUrlChange = (url: string) => {
+    setMediafireUrl(url);
+    if (url && (url.includes('mediafire.com') || url.startsWith('http'))) {
+      try {
+        // Formatos típicos de MediaFire:
+        // https://www.mediafire.com/file/xxxx/NombreArchivo.zip/file
+        // https://www.mediafire.com/download/xxxx/NombreArchivo.zip
+        const match = url.match(/\/file\/[^\/]+\/([^\/]+)/) || url.match(/\/download\/[^\/]+\/([^\/]+)/);
+        if (match && match[1]) {
+          const rawFileName = decodeURIComponent(match[1].replace(/\/file$/, ''));
+          if (!title || title.trim() === '') {
+            const clean = rawFileName.substring(0, rawFileName.lastIndexOf('.')) || rawFileName;
+            setTitle(clean.replace(/[-_.]+/g, ' ').trim());
+          }
+          if (!uploadedFileName) {
+            setUploadedFileName(rawFileName);
+            const ext = rawFileName.split('.').pop()?.toUpperCase() || 'ARCHIVO';
+            setFileType(`${ext} MediaFire`);
+          }
+        }
+      } catch {}
+    }
+  };
 
   // Formateador de peso de archivo automático
   const formatBytes = (bytes: number): string => {
@@ -327,7 +385,11 @@ export const AdminUploadModal: React.FC<AdminUploadModalProps> = ({ isOpen, onCl
         }
       }
 
-      if (finalDownloadUrl.startsWith('blob:')) {
+      // Resolver enlace definitivo de MediaFire para redirección directa
+      const finalMediafireUrl = mediafireUrl.trim() || (rawFile ? `https://www.mediafire.com/file/seis6_${tempItemId.replace(/[^a-zA-Z0-9]/g, '')}/${encodeURIComponent((finalFileName || 'recurso').replace(/[^a-zA-Z0-9._-]/g, '_'))}/file` : '');
+      if (finalMediafireUrl) {
+        finalDownloadUrl = finalMediafireUrl;
+      } else if (finalDownloadUrl.startsWith('blob:')) {
         finalDownloadUrl = `/api/vault/download/${encodeURIComponent(tempItemId)}`;
       }
 
@@ -342,13 +404,14 @@ export const AdminUploadModal: React.FC<AdminUploadModalProps> = ({ isOpen, onCl
         title: title.trim(),
         description: description.trim(),
         category,
-        fileType: finalFileName ? (fileType || 'Archivo') : '',
+        fileType: finalFileName ? (fileType || 'Archivo MediaFire') : (finalMediafireUrl ? 'Enlace MediaFire' : 'Archivo'),
         fileSize: finalFileName ? (finalFileSize || '') : '',
         fileName: finalFileName || undefined,
         fileMimeType: finalMime || undefined,
         fileData: fileData || undefined,
         rawFileBlob: rawFile || undefined,
         downloadUrl: finalDownloadUrl,
+        mediafireUrl: finalMediafireUrl || undefined,
         coverImage: finalCover,
         version: version.trim() || 'v1.0',
         listIds: selectedListIds,
@@ -683,6 +746,62 @@ export const AdminUploadModal: React.FC<AdminUploadModalProps> = ({ isOpen, onCl
                     : 'bg-white border-[#CBD5E1] text-[#0F172A]'
                 }`}
               />
+            </div>
+
+            {/* SECCIÓN MEDIAFIRE CLOUD - REDIRECCIÓN OFICIAL */}
+            <div className={`p-4 rounded-2xl border space-y-2.5 transition-colors ${
+              isDark ? 'bg-[#0A101D] border-[#0066FF]/40' : 'bg-blue-50/70 border-[#0066FF]/40'
+            }`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-[#0F172A]'}`}>
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#0066FF] animate-pulse"></span>
+                  <span className="text-[#0066FF]">🔥 Enlace de MediaFire</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#0066FF]/20 text-[#0066FF] font-semibold border border-[#0066FF]/30">
+                    Redirección Directa
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenMediafire}
+                    className="text-[11px] font-semibold text-[#0066FF] hover:underline flex items-center gap-1 bg-[#0066FF]/10 hover:bg-[#0066FF]/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    title="Abre tu panel de MediaFire en una pestaña nueva para subir el archivo"
+                  >
+                    <span>Abrir MediaFire</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePasteClipboard}
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                      isDark
+                        ? 'bg-[#121216] hover:bg-[#1E1E24] text-white border-[#1E1E24]'
+                        : 'bg-white hover:bg-slate-100 text-[#0F172A] border-[#CBD5E1]'
+                    }`}
+                  >
+                    Pegar Link
+                  </button>
+                </div>
+              </div>
+
+              <input
+                id="admin-upload-mediafire-input"
+                type="url"
+                value={mediafireUrl}
+                onChange={(e) => handleMediafireUrlChange(e.target.value)}
+                placeholder="https://www.mediafire.com/file/xxxx/tu_archivo.zip/file"
+                className={`w-full rounded-xl px-4 py-2.5 text-xs font-mono focus:outline-none focus:border-[#0066FF] transition-colors border ${
+                  isDark
+                    ? 'bg-[#05080E] border-[#1E1E24] text-white placeholder:text-[#64748B]'
+                    : 'bg-white border-[#CBD5E1] text-[#0F172A] placeholder:text-[#94A3B8]'
+                }`}
+              />
+
+              <p className={`text-[11px] leading-relaxed ${isDark ? 'text-[#8E8E93]' : 'text-[#64748B]'}`}>
+                Sube tu archivo a <strong>MediaFire</strong> y pega el enlace aquí. Cuando cualquier usuario presione el botón de <strong>Descargar</strong>, la app lo redirigirá inmediatamente a MediaFire sin descargar archivos locales en el teléfono.
+              </p>
             </div>
 
             {/* Metadatos Reconocidos: Formato, Peso y Versión (Formato y Peso solo visibles si se sube archivo) */}

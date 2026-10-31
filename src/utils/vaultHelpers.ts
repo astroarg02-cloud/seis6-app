@@ -10,6 +10,7 @@ export function hasVaultItemFile(item?: VaultItem | null): boolean {
   if (item.fileName && item.fileName.trim().length > 0) return true;
   if (item.fileType && item.fileType.trim().length > 0) return true;
   if (item.fileSize && item.fileSize.trim().length > 0) return true;
+  if (item.mediafireUrl && item.mediafireUrl.trim().length > 0) return true;
   if (
     item.downloadUrl &&
     item.downloadUrl.trim().length > 0 &&

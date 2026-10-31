@@ -260,6 +260,25 @@ function resolveItemFileDetails(item: VaultItem): { filename: string; mimeType: 
  */
 export async function downloadVaultItemResource(item: VaultItem): Promise<SaveFileResult> {
   try {
+    // Redirección directa a MediaFire
+    if (item.mediafireUrl || (item.downloadUrl && (item.downloadUrl.includes('mediafire.com') || item.downloadUrl.startsWith('http')))) {
+      const targetUrl = item.mediafireUrl || item.downloadUrl;
+      try {
+        const a = document.createElement('a');
+        a.href = targetUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (document.body.contains(a)) document.body.removeChild(a);
+        }, 800);
+      } catch {
+        window.location.href = targetUrl;
+      }
+      return { success: true, savedPath: 'MediaFire Cloud (Redirección)', isNative: false };
+    }
+
     const { filename, mimeType, isZip } = resolveItemFileDetails(item);
     const targetFilename = item.fileName || filename;
 

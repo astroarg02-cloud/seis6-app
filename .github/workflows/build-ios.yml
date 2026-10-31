@@ -8,7 +8,7 @@ on:
 jobs:
   build-ipa:
     name: Compilar IPA iOS desde Vite
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 30
 
     steps:
@@ -22,7 +22,15 @@ jobs:
 
       - name: 3. Seleccionar versión de Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+          if [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app
+          elif [ -d "/Applications/Xcode_16.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.1.app
+          elif [ -d "/Applications/Xcode_16.0.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.0.app
+          elif [ -d "/Applications/Xcode_15.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.4.app
+          fi
           xcodebuild -version
 
       - name: 4. Compilar aplicación web y sincronizar Capacitor iOS
@@ -30,6 +38,7 @@ jobs:
           npm install --legacy-peer-deps
           npm run build
           npx cap sync ios
+          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App || true
 
       - name: 5. Asegurar iconos y splash oficiales de SEIS 6
         run: |
@@ -40,22 +49,41 @@ jobs:
       - name: 6. Compilar Archive con xcodebuild (Modo Universal Sideloading)
         run: |
           mkdir -p build
-          xcodebuild clean -project ios/App/App.xcodeproj -scheme App -configuration Release
+          xcodebuild clean -project ios/App/App.xcodeproj -scheme App -configuration Release || true
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/App.xcarchive \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_ENTITLEMENTS="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            || xcodebuild build \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_ENTITLEMENTS="" \
             COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: 7. Empaquetar archivo .ipa instalable
         run: |
           mkdir -p build-output/Payload
-          APP_PATH=$(find build/App.xcarchive/Products/Applications -name "*.app" -type d | head -n 1)
+          APP_PATH=$(find build -name "App.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find build -name "*.app" -type d | head -n 1)
+          fi
           if [ -z "$APP_PATH" ]; then
             echo "ERROR: No se encontró el bundle .app generado por Xcode."
             exit 1

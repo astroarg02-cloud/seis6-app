@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="vaultGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0066fe" />
+      <stop offset="100%" stop-color="#002d99" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#facc15" />
+      <stop offset="100%" stop-color="#eab308" />
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#vaultGrad)" />
+  <rect x="6" y="6" width="88" height="88" rx="18" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2" />
+  
+  <!-- Vault / Lock Icon -->
+  <path d="M 32 44 V 32 A 18 18 0 0 1 68 32 V 44" fill="none" stroke="url(#goldGrad)" stroke-width="7" stroke-linecap="round" />
+  <rect x="24" y="44" width="52" height="40" rx="10" fill="#0f172a" stroke="url(#goldGrad)" stroke-width="3.5" />
+  <circle cx="50" cy="61" r="5.5" fill="url(#goldGrad)" />
+  <path d="M 50 64 V 74" stroke="url(#goldGrad)" stroke-width="4.5" stroke-linecap="round" />
+</svg>

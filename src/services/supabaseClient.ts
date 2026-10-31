@@ -57,6 +57,17 @@ export const supabaseService = {
   saveLocalVaultItems(items: VaultItem[]): void {
     try {
       localStorage.setItem(STORAGE_VAULT_ITEMS_KEY, JSON.stringify(items));
+      // Purge legacy keys so old deleted items never resurrect
+      const legacyKeys = [
+        'vip_vault_items_local_v3',
+        'vip_vault_items_v2',
+        'vip_vault_items',
+        'vault_items',
+        'app_vault_items',
+      ];
+      for (const k of legacyKeys) {
+        localStorage.removeItem(k);
+      }
     } catch (e) {
       console.warn('Could not save vault items to localStorage:', e);
     }
@@ -64,6 +75,15 @@ export const supabaseService = {
 
   getLocalVaultItems(): VaultItem[] | null {
     try {
+      let deletedSet = new Set<string>();
+      try {
+        const rawDel = localStorage.getItem('vault_deleted_item_ids');
+        if (rawDel) {
+          const parsed = JSON.parse(rawDel);
+          if (Array.isArray(parsed)) deletedSet = new Set(parsed.map(String));
+        }
+      } catch {}
+
       const keysToScan = [
         STORAGE_VAULT_ITEMS_KEY,
         'vip_vault_items_local_v3',
@@ -82,7 +102,14 @@ export const supabaseService = {
             const parsed = JSON.parse(stored);
             if (Array.isArray(parsed)) {
               parsed.forEach((it) => {
-                if (it && it.id && it.title && !it.id.startsWith('res_00') && !it.id.startsWith('test-')) {
+                if (
+                  it &&
+                  it.id &&
+                  it.title &&
+                  !deletedSet.has(it.id) &&
+                  !it.id.startsWith('res_00') &&
+                  !it.id.startsWith('test-')
+                ) {
                   if (!itemMap.has(it.id)) {
                     itemMap.set(it.id, it as VaultItem);
                   }
@@ -518,7 +545,27 @@ export const supabaseService = {
     try {
       const currentItems = this.getLocalVaultItems();
       if (currentItems) {
-        this.saveLocalVaultItems(currentItems.filter(i => i.id !== itemId));
+        this.saveLocalVaultItems(currentItems.filter((i) => i.id !== itemId));
+      }
+      // Clean legacy keys
+      const legacyKeys = [
+        STORAGE_VAULT_ITEMS_KEY,
+        'vip_vault_items_local_v3',
+        'vip_vault_items_v2',
+        'vip_vault_items',
+        'vault_items',
+        'app_vault_items',
+      ];
+      for (const k of legacyKeys) {
+        const stored = localStorage.getItem(k);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              localStorage.setItem(k, JSON.stringify(parsed.filter((it: any) => it && it.id !== itemId)));
+            }
+          } catch {}
+        }
       }
     } catch {}
 

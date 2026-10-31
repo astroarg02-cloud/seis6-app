@@ -20,6 +20,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { firebaseService, resolveApiUrl, safeFetchApi, safeFetchJson, isStandaloneApp, getRemoteServerBaseUrl } from './services/firebaseService';
 import { liveSyncService } from './services/liveSyncService';
 import { supabaseService, isSupabaseConfigured } from './services/supabaseClient';
+import { deleteFileFromIndexedDB } from './services/indexedDBStorage';
 import { 
   FolderClosed, 
   Crown, 
@@ -69,10 +70,42 @@ const unmarkDeletedListId = (id: string) => {
   } catch (e) {}
 };
 
+// Helper to manage deleted item (publicaciones) IDs in localStorage to prevent deleted items from resurfacing
+const getDeletedItemIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem('vault_deleted_item_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr.map(String));
+    }
+  } catch (e) {}
+  return new Set<string>();
+};
+
+const addDeletedItemId = (id: string) => {
+  try {
+    const current = getDeletedItemIds();
+    current.add(id);
+    localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+};
+
+const unmarkDeletedItemId = (id: string) => {
+  try {
+    const current = getDeletedItemIds();
+    current.delete(id);
+    localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {}
+};
+
 function AppContent() {
   const [items, setItems] = useState<VaultItem[]>(() => {
+    const deletedIds = getDeletedItemIds();
     const local = supabaseService.getLocalVaultItems();
-    return local && local.length > 0 ? local : INITIAL_VAULT_ITEMS;
+    if (local && local.length > 0) {
+      return local.filter((i) => i && i.id && !deletedIds.has(i.id));
+    }
+    return INITIAL_VAULT_ITEMS.filter((i) => i && i.id && !deletedIds.has(i.id));
   });
 
   const [lists, setLists] = useState<VaultList[]>(() => {
@@ -222,23 +255,33 @@ function AppContent() {
     }
   }, [currentTab, currentUser, vaultTabMode, selectedVaultListId]);
 
-  // Helper to merge incoming items with existing state preserving custom user uploads
-  const mergeVaultItems = useCallback((incoming: VaultItem[]) => {
-    if (!Array.isArray(incoming) || incoming.length === 0) return;
+  // Helper to merge incoming items with existing state with strict deleted items exclusion
+  const mergeVaultItems = useCallback((incoming: VaultItem[], incomingDeletedIds?: string[]) => {
+    if (!Array.isArray(incoming)) return;
+    const deletedIds = getDeletedItemIds();
+    if (Array.isArray(incomingDeletedIds)) {
+      incomingDeletedIds.forEach((id) => {
+        if (id) deletedIds.add(String(id));
+      });
+      try {
+        localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(deletedIds)));
+      } catch {}
+    }
+
     setItems((prev) => {
       const map = new Map<string, VaultItem>();
       incoming.forEach((it) => {
-        if (it && it.id && !it.id.startsWith('res_00') && !it.id.startsWith('test-')) {
+        if (it && it.id && !deletedIds.has(it.id) && !it.id.startsWith('res_00') && !it.id.startsWith('test-')) {
           map.set(it.id, it);
         }
       });
-      // Keep any locally created item not yet returned from server
+      // Keep any locally created item not yet returned from server that is not deleted
       prev.forEach((it) => {
-        if (it && it.id && !it.id.startsWith('res_00') && !it.id.startsWith('test-') && !map.has(it.id)) {
+        if (it && it.id && !deletedIds.has(it.id) && !it.id.startsWith('res_00') && !it.id.startsWith('test-') && !map.has(it.id)) {
           map.set(it.id, it);
         }
       });
-      const merged = Array.from(map.values());
+      const merged = Array.from(map.values()).filter((it) => !deletedIds.has(it.id));
       supabaseService.saveLocalVaultItems(merged);
       return merged;
     });
@@ -471,6 +514,19 @@ function AppContent() {
           }
 
           try {
+            const resDelItems = await safeFetchApi('/api/vault/deleted-items', {}, 1500);
+            if (resDelItems && resDelItems.ok) {
+              const jsonDelItems = await resDelItems.json();
+              if (jsonDelItems.deletedIds && Array.isArray(jsonDelItems.deletedIds)) {
+                const currentDeletedItems = getDeletedItemIds();
+                jsonDelItems.deletedIds.forEach((id: string) => currentDeletedItems.add(id));
+                localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(currentDeletedItems)));
+                setItems((prev) => prev.filter((it) => !currentDeletedItems.has(it.id)));
+              }
+            }
+          } catch (delErr) {}
+
+          try {
             const resItems = await safeFetchApi('/api/vault/items', {}, 2000);
             if (resItems && resItems.ok) {
               const json = await resItems.json();
@@ -570,6 +626,19 @@ function AppContent() {
                 jsonDel.deletedIds.forEach((id: string) => currentDeleted.add(id));
                 localStorage.setItem('vault_deleted_list_ids', JSON.stringify(Array.from(currentDeleted)));
                 setLists((prev) => prev.filter((l) => !currentDeleted.has(l.id)));
+              }
+            }
+          } catch (e) {}
+
+          try {
+            const resDelItems = await safeFetchApi('/api/vault/deleted-items', {}, 1500);
+            if (resDelItems && resDelItems.ok) {
+              const jsonDelItems = await resDelItems.json();
+              if (jsonDelItems.deletedIds && Array.isArray(jsonDelItems.deletedIds)) {
+                const currentDeletedItems = getDeletedItemIds();
+                jsonDelItems.deletedIds.forEach((id: string) => currentDeletedItems.add(id));
+                localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(currentDeletedItems)));
+                setItems((prev) => prev.filter((it) => !currentDeletedItems.has(it.id)));
               }
             }
           } catch (e) {}
@@ -771,6 +840,8 @@ function AppContent() {
     targetListIds: string[] = []
   ) => {
     const newItemId = newItemData.id || `vault-res-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    unmarkDeletedItemId(newItemId);
+
     const newItem: VaultItem = {
       ...newItemData,
       id: newItemId,
@@ -850,6 +921,7 @@ function AppContent() {
 
   // Update vault item (e.g., after re-uploading file)
   const handleUpdateItem = (updatedItem: VaultItem) => {
+    unmarkDeletedItemId(updatedItem.id);
     setItems((prev) => {
       const updated = prev.map((i) => (i.id === updatedItem.id ? updatedItem : i));
       supabaseService.saveLocalVaultItems(updated);
@@ -860,6 +932,9 @@ function AppContent() {
 
   // Delete vault item (Admin exclusively)
   const handleDeleteItem = async (itemId: string) => {
+    // Record deletion so item can NEVER be resurrected by sync or default items
+    addDeletedItemId(itemId);
+
     setItems((prev) => {
       const updated = prev.filter((item) => item.id !== itemId);
       supabaseService.saveLocalVaultItems(updated);
@@ -890,6 +965,11 @@ function AppContent() {
     // 3. Delete on Supabase
     try {
       await supabaseService.deleteVaultItem(itemId);
+    } catch (e) {}
+
+    // 4. Delete from IndexedDB file cache
+    try {
+      await deleteFileFromIndexedDB(itemId);
     } catch (e) {}
   };
 

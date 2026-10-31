@@ -2009,11 +2009,41 @@ export const firebaseService = {
 
   // Delete Vault Item from Firestore
   async deleteVaultItemFromFirestore(itemId: string): Promise<boolean> {
-    if (!itemId || isFirestoreQuotaExhausted()) return false;
+    if (!itemId) return false;
+    // Persist to local deleted list immediately
+    try {
+      const rawDel = localStorage.getItem('vault_deleted_item_ids');
+      const delSet = new Set<string>(rawDel ? JSON.parse(rawDel) : []);
+      delSet.add(itemId);
+      localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(delSet)));
+    } catch {}
+
+    if (isFirestoreQuotaExhausted()) return false;
     try {
       const res = await firestoreRestFetch(`/vault_items/${encodeURIComponent(itemId)}`, {
         method: 'DELETE',
       });
+
+      // Also record in system_config/items_registry if possible
+      try {
+        const rawDel = localStorage.getItem('vault_deleted_item_ids');
+        const delArr = rawDel ? JSON.parse(rawDel) : [itemId];
+        await firestoreRestFetch('/system_config/items_registry', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              deletedIds: {
+                arrayValue: {
+                  values: (Array.isArray(delArr) ? delArr : [itemId]).map((id: string) => ({ stringValue: String(id) })),
+                },
+              },
+              updatedAt: { stringValue: new Date().toISOString() },
+            },
+          }),
+        });
+      } catch {}
+
       return Boolean(res && res.ok);
     } catch {
       return false;
@@ -2024,6 +2054,15 @@ export const firebaseService = {
   onVaultItemsSnapshot(callback: (items: VaultItem[]) => void) {
     if (isFirestoreReadQuotaExhausted()) return () => {};
     try {
+      let deletedSet = new Set<string>();
+      try {
+        const rawDel = localStorage.getItem('vault_deleted_item_ids');
+        if (rawDel) {
+          const parsed = JSON.parse(rawDel);
+          if (Array.isArray(parsed)) deletedSet = new Set(parsed.map(String));
+        }
+      } catch {}
+
       const colRef = collection(db, 'vault_items');
       let unsub: (() => void) | null = null;
       unsub = onSnapshot(
@@ -2032,7 +2071,13 @@ export const firebaseService = {
           if (!snapshot.empty) {
             const items: VaultItem[] = [];
             snapshot.forEach((docSnap) => {
-              if (docSnap.id.startsWith('res_00') || docSnap.id.startsWith('test-') || docSnap.id === 'vault-res-test-rest' || docSnap.id === 'vault-res-direct-1787703256063') {
+              if (
+                deletedSet.has(docSnap.id) ||
+                docSnap.id.startsWith('res_00') ||
+                docSnap.id.startsWith('test-') ||
+                docSnap.id === 'vault-res-test-rest' ||
+                docSnap.id === 'vault-res-direct-1787703256063'
+              ) {
                 return;
               }
               const data = docSnap.data();
@@ -2081,6 +2126,14 @@ export const firebaseService = {
       return () => {};
     }
   },
+          try { unsub(); } catch {}
+        }
+      };
+    } catch (err) {
+      handleFirestoreError(err);
+      return () => {};
+    }
+  },
 
   // Update comments in Firestore via stateless REST
   async updateItemComments(itemId: string, comments: any[]): Promise<void> {
@@ -2107,6 +2160,15 @@ export const firebaseService = {
   // Fetch Vault Items from Firestore with REST fallback
   async fetchVaultItems(): Promise<VaultItem[] | null> {
     if (isFirestoreReadQuotaExhausted()) return null;
+    let deletedSet = new Set<string>();
+    try {
+      const rawDel = localStorage.getItem('vault_deleted_item_ids');
+      if (rawDel) {
+        const parsed = JSON.parse(rawDel);
+        if (Array.isArray(parsed)) deletedSet = new Set(parsed.map(String));
+      }
+    } catch {}
+
     try {
       // 1. Try Web SDK
       const colRef = collection(db, 'vault_items');
@@ -2114,7 +2176,13 @@ export const firebaseService = {
       if (!snap.empty) {
         const items: VaultItem[] = [];
         snap.forEach((docSnap) => {
-          if (docSnap.id.startsWith('res_00') || docSnap.id.startsWith('test-') || docSnap.id === 'vault-res-test-rest' || docSnap.id === 'vault-res-direct-1787703256063') {
+          if (
+            deletedSet.has(docSnap.id) ||
+            docSnap.id.startsWith('res_00') ||
+            docSnap.id.startsWith('test-') ||
+            docSnap.id === 'vault-res-test-rest' ||
+            docSnap.id === 'vault-res-direct-1787703256063'
+          ) {
             return;
           }
           const data = docSnap.data();
@@ -2165,7 +2233,7 @@ export const firebaseService = {
           const items: VaultItem[] = data.documents
             .filter((docSnap: any) => {
               const id = docSnap.name.split('/').pop() || '';
-              return !id.startsWith('res_00') && !id.startsWith('test-') && id !== 'vault-res-test-rest' && id !== 'vault-res-direct-1787703256063';
+              return !deletedSet.has(id) && !id.startsWith('res_00') && !id.startsWith('test-') && id !== 'vault-res-test-rest' && id !== 'vault-res-direct-1787703256063';
             })
             .map((docSnap: any) => {
             const fields = docSnap.fields || {};

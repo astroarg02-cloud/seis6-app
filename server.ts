@@ -18,6 +18,7 @@ const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const VAULT_FILE = path.join(DATA_DIR, 'vault_items.json');
 const VAULT_LISTS_FILE = path.join(DATA_DIR, 'vault_lists.json');
 const DELETED_LISTS_FILE = path.join(DATA_DIR, 'deleted_lists.json');
+const DELETED_ITEMS_FILE = path.join(DATA_DIR, 'deleted_items.json');
 const MAINTENANCE_FILE = path.join(DATA_DIR, 'maintenance.json');
 const LIVE_SYNC_FILE = path.join(DATA_DIR, 'live_sync.json');
 const RECEIPTS_FILE = path.join(DATA_DIR, 'receipts.json');
@@ -173,6 +174,40 @@ function removeDeletedListId(id: string): void {
     const current = readDeletedListIds();
     current.delete(id);
     fs.writeFileSync(DELETED_LISTS_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
+  } catch (err) {}
+}
+
+// Helper to track deleted item (publicaciones) IDs across reboots and cache syncs
+function readDeletedItemIds(): Set<string> {
+  try {
+    if (fs.existsSync(DELETED_ITEMS_FILE)) {
+      const raw = fs.readFileSync(DELETED_ITEMS_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.map(String));
+      }
+    }
+  } catch (err) {
+    console.error('Error reading deleted item ids:', err);
+  }
+  return new Set<string>();
+}
+
+function addDeletedItemId(id: string): void {
+  try {
+    const current = readDeletedItemIds();
+    current.add(id);
+    fs.writeFileSync(DELETED_ITEMS_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error recording deleted item id:', err);
+  }
+}
+
+function removeDeletedItemId(id: string): void {
+  try {
+    const current = readDeletedItemIds();
+    current.delete(id);
+    fs.writeFileSync(DELETED_ITEMS_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
   } catch (err) {}
 }
 
@@ -405,6 +440,7 @@ async function fetchAllListsFromFirestoreREST(): Promise<any[]> {
 // Helper to read items safely
 function readVaultItems(): any[] {
   try {
+    const deletedSet = readDeletedItemIds();
     if (fs.existsSync(VAULT_FILE)) {
       const raw = fs.readFileSync(VAULT_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
@@ -413,6 +449,7 @@ function readVaultItems(): any[] {
           (it) =>
             it &&
             it.id &&
+            !deletedSet.has(it.id) &&
             !it.id.startsWith('test-') &&
             !it.id.startsWith('res_00') &&
             it.id !== 'vault-res-test-rest' &&
@@ -762,25 +799,32 @@ app.post('/api/live-sync', (req, res) => {
   }
 });
 
+// GET /api/vault/deleted-items - Return item IDs deleted by admin so all clients purge them immediately
+app.get('/api/vault/deleted-items', (_req, res) => {
+  const deletedSet = readDeletedItemIds();
+  return res.json({ success: true, deletedIds: Array.from(deletedSet) });
+});
+
 // GET /api/vault/items - Fetch all items from Firestore + Server Store
 app.get('/api/vault/items', async (req, res) => {
   try {
+    const deletedSet = readDeletedItemIds();
     const localItems = readVaultItems();
     const firestoreItems = await fetchAllFromFirestoreREST();
 
-    // Merge without duplicates
+    // Merge without duplicates and filter out any deleted items
     const itemMap = new Map<string, any>();
     localItems.forEach((i) => {
-      if (i && i.id) itemMap.set(i.id, i);
+      if (i && i.id && !deletedSet.has(i.id)) itemMap.set(i.id, i);
     });
     firestoreItems.forEach((i) => {
-      if (i && i.id) {
+      if (i && i.id && !deletedSet.has(i.id)) {
         const existing = itemMap.get(i.id);
         itemMap.set(i.id, { ...existing, ...i });
       }
     });
 
-    const merged = Array.from(itemMap.values());
+    const merged = Array.from(itemMap.values()).filter((i) => !deletedSet.has(i.id));
     if (merged.length > 0) {
       writeVaultItems(merged);
     }
@@ -884,6 +928,9 @@ app.post('/api/vault/upload', async (req, res) => {
     if (!newItem.id) {
       newItem.id = `vault-res-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     }
+
+    // Unmark as deleted if re-created/uploaded
+    removeDeletedItemId(newItem.id);
 
     // Check if a physical file already exists in UPLOADS_DIR for this item
     if (fs.existsSync(UPLOADS_DIR)) {
@@ -1134,10 +1181,31 @@ app.post('/api/vault/items/:id/comment', async (req, res) => {
 app.delete('/api/vault/items/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'ID requerido' });
+    }
+    // Record persistently as deleted so no background sync or Firestore fetch can resurrect it
+    addDeletedItemId(id);
+
     const items = readVaultItems();
     const updated = items.filter((i) => i.id !== id);
     writeVaultItems(updated);
     await deleteFromFirestoreREST(id);
+
+    // Also remove from disk in UPLOADS_DIR if a physical file was stored
+    if (fs.existsSync(UPLOADS_DIR)) {
+      try {
+        const files = fs.readdirSync(UPLOADS_DIR);
+        for (const f of files) {
+          if (f.startsWith(`${id}_`)) {
+            try {
+              fs.unlinkSync(path.join(UPLOADS_DIR, f));
+              console.log(`[VAULT Server] Deleted physical file: ${f}`);
+            } catch {}
+          }
+        }
+      } catch {}
+    }
 
     // Also remove from all lists
     const lists = readVaultLists();
@@ -1156,7 +1224,7 @@ app.delete('/api/vault/items/:id', async (req, res) => {
       }
     }
 
-    return res.json({ success: true, total: updated.length });
+    return res.json({ success: true, total: updated.length, deletedId: id });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }

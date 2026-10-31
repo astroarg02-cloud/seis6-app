@@ -373,41 +373,37 @@ export const supabaseService = {
       }
     }
 
-    // 3. If server items found, persist locally and also sync any local items up to server
-    const localItems = this.getLocalVaultItems() || [];
-    if (serverItems.length > 0) {
-      // Check if local has items that server doesn't have yet, and upload them
-      const serverIds = new Set(serverItems.map(i => i.id));
-      const unsyncedLocals = localItems.filter(i => !serverIds.has(i.id));
-      if (unsyncedLocals.length > 0) {
-        if (!isStandaloneApp() || getRemoteServerBaseUrl()) {
-          safeFetchApi('/api/vault/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: unsyncedLocals }),
-          }).catch(() => {});
-        }
-        serverItems = [...unsyncedLocals, ...serverItems];
+    let deletedSet = new Set<string>();
+    try {
+      const rawDel = localStorage.getItem('vault_deleted_item_ids');
+      if (rawDel) {
+        const parsed = JSON.parse(rawDel);
+        if (Array.isArray(parsed)) deletedSet = new Set(parsed.map(String));
       }
+    } catch {}
+
+    // 3. If server items found, persist locally (strict non-deleted filtering)
+    const localItems = (this.getLocalVaultItems() || []).filter(i => i && i.id && !deletedSet.has(i.id));
+    if (serverItems.length > 0) {
+      serverItems = serverItems.filter(i => i && i.id && !deletedSet.has(i.id));
       this.saveLocalVaultItems(serverItems);
       return serverItems;
     }
 
-    // 4. If server was empty but local has items, upload local items to server!
+    // 4. If server was empty but local has items
     if (localItems && localItems.length > 0) {
-      if (!isStandaloneApp() || getRemoteServerBaseUrl()) {
-        safeFetchApi('/api/vault/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: localItems }),
-        }).catch(() => {});
-      }
-      return localItems;
+      return localItems.filter(i => !deletedSet.has(i.id));
     }
 
-    // 5. Initial seed if storage is empty
-    this.saveLocalVaultItems(INITIAL_VAULT_ITEMS);
-    return INITIAL_VAULT_ITEMS;
+    // 5. Initial seed only if first run and never initialized
+    const hasInit = typeof window !== 'undefined' && localStorage.getItem('vault_initialized');
+    if (!hasInit) {
+      if (typeof window !== 'undefined') localStorage.setItem('vault_initialized', 'true');
+      const seedItems = INITIAL_VAULT_ITEMS.filter(i => !deletedSet.has(i.id));
+      this.saveLocalVaultItems(seedItems);
+      return seedItems;
+    }
+    return [];
   },
 
   async insertVaultItem(item: VaultItem): Promise<boolean> {
@@ -542,6 +538,13 @@ export const supabaseService = {
   },
 
   async deleteVaultItem(itemId: string): Promise<boolean> {
+    try {
+      const raw = localStorage.getItem('vault_deleted_item_ids');
+      const set = new Set<string>(raw ? JSON.parse(raw) : []);
+      set.add(itemId);
+      localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(set)));
+    } catch {}
+
     try {
       const currentItems = this.getLocalVaultItems();
       if (currentItems) {

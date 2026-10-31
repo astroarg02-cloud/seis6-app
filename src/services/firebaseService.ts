@@ -2010,24 +2010,34 @@ export const firebaseService = {
   // Delete Vault Item from Firestore
   async deleteVaultItemFromFirestore(itemId: string): Promise<boolean> {
     if (!itemId) return false;
-    // Persist to local deleted list immediately
+    // 1. Persist to local deleted blacklist immediately
+    let allDeletedArr: string[] = [itemId];
     try {
       const rawDel = localStorage.getItem('vault_deleted_item_ids');
       const delSet = new Set<string>(rawDel ? JSON.parse(rawDel) : []);
       delSet.add(itemId);
-      localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(delSet)));
+      allDeletedArr = Array.from(delSet);
+      localStorage.setItem('vault_deleted_item_ids', JSON.stringify(allDeletedArr));
     } catch {}
 
-    if (isFirestoreQuotaExhausted()) return false;
+    // 2. Try Firestore SDK deleteDoc first (instantly purges from SDK local/memory cache)
     try {
-      const res = await firestoreRestFetch(`/vault_items/${encodeURIComponent(itemId)}`, {
+      const docRef = doc(db, 'vault_items', itemId);
+      await withFirestoreTimeout(deleteDoc(docRef), 2000, false);
+    } catch (sdkErr) {
+      console.warn('Firebase SDK deleteDoc notice:', sdkErr);
+    }
+
+    if (isFirestoreQuotaExhausted()) return true;
+
+    try {
+      // 3. Fallback to Firestore REST delete
+      await firestoreRestFetch(`/vault_items/${encodeURIComponent(itemId)}`, {
         method: 'DELETE',
       });
 
-      // Also record in system_config/items_registry if possible
+      // 4. Update system_config/items_registry so ALL devices receive deleted IDs in real time
       try {
-        const rawDel = localStorage.getItem('vault_deleted_item_ids');
-        const delArr = rawDel ? JSON.parse(rawDel) : [itemId];
         await firestoreRestFetch('/system_config/items_registry', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -2035,7 +2045,7 @@ export const firebaseService = {
             fields: {
               deletedIds: {
                 arrayValue: {
-                  values: (Array.isArray(delArr) ? delArr : [itemId]).map((id: string) => ({ stringValue: String(id) })),
+                  values: allDeletedArr.map((id: string) => ({ stringValue: String(id) })),
                 },
               },
               updatedAt: { stringValue: new Date().toISOString() },
@@ -2044,35 +2054,75 @@ export const firebaseService = {
         });
       } catch {}
 
-      return Boolean(res && res.ok);
+      return true;
     } catch {
-      return false;
+      return true;
     }
   },
 
-  // Real-time listener for Firestore Vault Items
-  onVaultItemsSnapshot(callback: (items: VaultItem[]) => void) {
+  // Real-time listener for Firestore Vault Items + Deleted Items Registry
+  onVaultItemsSnapshot(callback: (items: VaultItem[], deletedIds?: string[]) => void) {
     if (isFirestoreReadQuotaExhausted()) return () => {};
     try {
-      let deletedSet = new Set<string>();
+      const colRef = collection(db, 'vault_items');
+      const regRef = doc(db, 'system_config', 'items_registry');
+      let unsubCol: (() => void) | null = null;
+      let unsubReg: (() => void) | null = null;
+
+      const getLatestDeletedItemIds = (): Set<string> => {
+        try {
+          const raw = localStorage.getItem('vault_deleted_item_ids');
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) return new Set(arr.map(String));
+          }
+        } catch {}
+        return new Set<string>();
+      };
+
+      // Real-time listener for deleted items registry
       try {
-        const rawDel = localStorage.getItem('vault_deleted_item_ids');
-        if (rawDel) {
-          const parsed = JSON.parse(rawDel);
-          if (Array.isArray(parsed)) deletedSet = new Set(parsed.map(String));
-        }
+        unsubReg = onSnapshot(
+          regRef,
+          (snap) => {
+            if (snap.exists()) {
+              const data = snap.data() as any;
+              const remoteDeleted: string[] = Array.isArray(data.deletedIds)
+                ? data.deletedIds.map(String)
+                : [];
+              if (remoteDeleted.length > 0) {
+                const currentSet = getLatestDeletedItemIds();
+                let hasNew = false;
+                remoteDeleted.forEach((id) => {
+                  if (!currentSet.has(id)) {
+                    currentSet.add(id);
+                    hasNew = true;
+                  }
+                });
+                if (hasNew) {
+                  try {
+                    localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(currentSet)));
+                  } catch {}
+                  // Immediately notify consumer to purge deleted items from state
+                  callback([], Array.from(currentSet));
+                }
+              }
+            }
+          },
+          () => {}
+        );
       } catch {}
 
-      const colRef = collection(db, 'vault_items');
-      let unsub: (() => void) | null = null;
-      unsub = onSnapshot(
+      // Real-time listener for vault_items
+      unsubCol = onSnapshot(
         colRef,
         (snapshot) => {
+          const currentDeleted = getLatestDeletedItemIds();
           if (!snapshot.empty) {
             const items: VaultItem[] = [];
             snapshot.forEach((docSnap) => {
               if (
-                deletedSet.has(docSnap.id) ||
+                currentDeleted.has(docSnap.id) ||
                 docSnap.id.startsWith('res_00') ||
                 docSnap.id.startsWith('test-') ||
                 docSnap.id === 'vault-res-test-rest' ||
@@ -2106,27 +2156,25 @@ export const firebaseService = {
                 },
               });
             });
-            callback(items);
+            callback(items, Array.from(currentDeleted));
+          } else {
+            callback([], Array.from(currentDeleted));
           }
         },
         (error) => {
           handleFirestoreError(error);
-          if (unsub) {
-            try { unsub(); } catch {}
+          if (unsubCol) {
+            try { unsubCol(); } catch {}
           }
         }
       );
+
       return () => {
-        if (unsub) {
-          try { unsub(); } catch {}
+        if (unsubCol) {
+          try { unsubCol(); } catch {}
         }
-      };
-    } catch (err) {
-      handleFirestoreError(err);
-      return () => {};
-    }
-  },
-          try { unsub(); } catch {}
+        if (unsubReg) {
+          try { unsubReg(); } catch {}
         }
       };
     } catch (err) {
@@ -2166,6 +2214,20 @@ export const firebaseService = {
       if (rawDel) {
         const parsed = JSON.parse(rawDel);
         if (Array.isArray(parsed)) deletedSet = new Set(parsed.map(String));
+      }
+    } catch {}
+
+    // Check remote deleted registry in Firestore
+    try {
+      const regSnap = await withFirestoreTimeout(getDoc(doc(db, 'system_config', 'items_registry')), 1200, true);
+      if (regSnap && regSnap.exists()) {
+        const data = regSnap.data() as any;
+        if (Array.isArray(data.deletedIds)) {
+          data.deletedIds.forEach((id: any) => deletedSet.add(String(id)));
+          try {
+            localStorage.setItem('vault_deleted_item_ids', JSON.stringify(Array.from(deletedSet)));
+          } catch {}
+        }
       }
     } catch {}
 

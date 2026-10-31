@@ -198,6 +198,7 @@ function addDeletedItemId(id: string): void {
     const current = readDeletedItemIds();
     current.add(id);
     fs.writeFileSync(DELETED_ITEMS_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
+    saveDeletedItemsToFirestoreREST(Array.from(current)).catch(() => {});
   } catch (err) {
     console.error('Error recording deleted item id:', err);
   }
@@ -208,7 +209,46 @@ function removeDeletedItemId(id: string): void {
     const current = readDeletedItemIds();
     current.delete(id);
     fs.writeFileSync(DELETED_ITEMS_FILE, JSON.stringify(Array.from(current), null, 2), 'utf-8');
+    saveDeletedItemsToFirestoreREST(Array.from(current)).catch(() => {});
   } catch (err) {}
+}
+
+async function saveDeletedItemsToFirestoreREST(deletedIds: string[]): Promise<boolean> {
+  if (isServerFirestoreQuotaExhausted()) return false;
+  try {
+    const res = await serverFirestoreFetch('/system_config/items_registry', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          deletedIds: {
+            arrayValue: {
+              values: deletedIds.map((id) => ({ stringValue: String(id) })),
+            },
+          },
+          updatedAt: { stringValue: new Date().toISOString() },
+        },
+      }),
+    });
+    return Boolean(res && res.ok);
+  } catch {
+    return false;
+  }
+}
+
+async function fetchDeletedItemsFromFirestoreREST(): Promise<string[]> {
+  if (isServerFirestoreQuotaExhausted()) return [];
+  try {
+    const res = await serverFirestoreFetch('/system_config/items_registry');
+    if (res && res.ok) {
+      const data: any = await res.json();
+      const values = data?.fields?.deletedIds?.arrayValue?.values;
+      if (Array.isArray(values)) {
+        return values.map((v: any) => String(v.stringValue || '')).filter(Boolean);
+      }
+    }
+  } catch {}
+  return [];
 }
 
 // Maintenance state persistence
@@ -619,8 +659,10 @@ async function fetchAllFromFirestoreREST(): Promise<any[]> {
       })
       .filter((it: any) => {
         const id = it.id;
+        const deletedSet = readDeletedItemIds();
         return (
           id &&
+          !deletedSet.has(id) &&
           !id.startsWith('res_00') &&
           !id.startsWith('test-') &&
           id !== 'vault-res-test-rest' &&
@@ -1103,26 +1145,29 @@ app.post('/api/vault/sync', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Array de items requerido' });
     }
 
+    const deletedSet = readDeletedItemIds();
     const currentItems = readVaultItems();
     const map = new Map<string, any>();
 
     currentItems.forEach((it) => {
-      if (it && it.id) map.set(it.id, it);
+      if (it && it.id && !deletedSet.has(it.id)) map.set(it.id, it);
     });
 
     items.forEach((it) => {
-      if (it && it.id) {
+      if (it && it.id && !deletedSet.has(it.id)) {
         map.set(it.id, { ...(map.get(it.id) || {}), ...it });
       }
     });
 
-    const merged = Array.from(map.values());
+    const merged = Array.from(map.values()).filter((it) => !deletedSet.has(it.id));
     writeVaultItems(merged);
 
-    // Background sync to Firestore REST
+    // Background sync to Firestore REST (only non-deleted items)
     (async () => {
-      for (const it of items) {
-        await saveToFirestoreREST(it);
+      for (const it of merged) {
+        if (!deletedSet.has(it.id)) {
+          await saveToFirestoreREST(it);
+        }
       }
     })().catch(() => {});
 
@@ -2524,19 +2569,30 @@ async function startServer() {
 
     // Lightweight non-exhaustive cloud read on startup (does not re-write existing items to preserve daily write quota)
     try {
+      // 1. Sync deleted items blacklist from Firestore REST first
+      try {
+        const cloudDeletedItemIds = await fetchDeletedItemsFromFirestoreREST();
+        if (cloudDeletedItemIds.length > 0) {
+          const currentDeleted = readDeletedItemIds();
+          cloudDeletedItemIds.forEach((id) => currentDeleted.add(id));
+          fs.writeFileSync(DELETED_ITEMS_FILE, JSON.stringify(Array.from(currentDeleted), null, 2), 'utf-8');
+        }
+      } catch {}
+
+      const deletedItemSet = readDeletedItemIds();
       const localItems = readVaultItems();
       const cloudItems = await fetchAllFromFirestoreREST();
       const itemMap = new Map<string, any>();
       for (const it of localItems) {
-        if (it && it.id) itemMap.set(it.id, it);
+        if (it && it.id && !deletedItemSet.has(it.id)) itemMap.set(it.id, it);
       }
       for (const it of cloudItems) {
-        if (it && it.id) itemMap.set(it.id, { ...(itemMap.get(it.id) || {}), ...it });
+        if (it && it.id && !deletedItemSet.has(it.id)) {
+          itemMap.set(it.id, { ...(itemMap.get(it.id) || {}), ...it });
+        }
       }
-      const mergedItems = Array.from(itemMap.values());
-      if (mergedItems.length > 0) {
-        writeVaultItems(mergedItems);
-      }
+      const mergedItems = Array.from(itemMap.values()).filter((it) => !deletedItemSet.has(it.id));
+      writeVaultItems(mergedItems);
 
       const deletedListSet = readDeletedListIds();
       const localLists = readVaultLists();
